@@ -17,7 +17,8 @@ Copy-Item -Path "shared/*" -Destination "./client2" -Recurse -Force
 Copy-Item -Path "shared/*" -Destination "./client3" -Recurse -Force
 
 
-
-wt -d client1
-wt -d client2
-wt -d client3
+if ((Get-Command wt.exe -ErrorAction SilentlyContinue)) {
+    wt -d client1
+    wt -d client2
+    wt -d client3
+}

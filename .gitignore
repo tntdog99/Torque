@@ -1,11 +1,18 @@
 client1/
 client2/
 client3/
-.vscode 
-servers/sqllite/wbms.db
 
-servers/sqllite/wbms.crt
-servers/sqllite/wbms.key
+**.db
+**.key
+**.crt
+.storage/ 
 
-servers/elasticsearch/wbms.db
-servers/elasticsearch/wbms.db
+
+.vscode
+.pytest_cache/
+__pycache__/
+**.pyc
+
+
+
+
