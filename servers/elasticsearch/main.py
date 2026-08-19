@@ -15,6 +15,15 @@ from cryptography.exceptions import InvalidSignature
 import base64
 
 
+
+
+
+
+
+
+
+
+
 def verify_posted_key(doc):
     try:
         ident_pub = Ed25519PublicKey.from_public_bytes(
@@ -106,7 +115,12 @@ urllib3.disable_warnings()
 from elasticsearch import Elasticsearch
 api_key = os.environ['API_KEY']
 
-db = Elasticsearch("http://127.0.0.1:9200", api_key=api_key, verify_certs=False)
+db = Elasticsearch(
+    os.environ["ELASTICSEARCH_URL"],
+    api_key=os.environ["API_KEY"],
+    ca_certs=os.environ["ELASTICSEARCH_CA_CERT"],
+    verify_certs=True,
+)
 HOST = '0.0.0.0' 
 PORT = 8080
 
@@ -161,7 +175,7 @@ while True:
                 database_request = json.loads(data.decode())
                 if database_request.get('request') == True:
                     # grabs the requested data (message or key) from the database
-                    if database_request.get('type_of_key_or_message') == 'otk' and database_request.get('consume'):
+                    if database_request.get('type_of_key_or_message') == 'otk':
                         query = {
                             "query": {
                                 "bool": {
@@ -180,23 +194,36 @@ while True:
                         else:
                             sent = [hits[0]]
                             doc_id = hits[0]["_id"]
-                            try:
-                                db.delete(index="wbms_database", id=doc_id)
-                            except Exception as e:
-                                print(f"Failed to delete consumed OTK: {e}")
                     elif database_request.get('type_of_key_or_message') == 'otk_invalidate':
-                        query = {
-                            "query": {
-                                "bool": {
-                                    "filter": [
-                                        {"term": {"type_of_key_or_message.keyword": "otk"}},
-                                        {"term": {"contact_id.keyword": database_request['contact_id']}},
-                                        {"term": {"key_id.keyword": database_request['key_id']}},
-                                    ]
-                                }
+                        try:
+                            key_id = database_request['key_id']
+                            invalidate_signature = base64.urlsafe_b64decode(database_request['invalidate_signature'])
+                            
+                            
+                            query = {
+                                "query": {
+                                    "bool": {
+                                        "filter": [
+                                            { "term": { "type_of_key_or_message.keyword": 'otk' } },
+                                            {"term": {"contact_id.keyword": database_request["contact_id"]}},
+                                            { "term": { "key_id.keyword": database_request['key_id'] } }
+                                        ]
+                                    }
+                                },
+                                "size": 1
                             }
-                        }
-                        db.delete_by_query(index="wbms_database", body=query)
+                            response = db.search(index="wbms_database", body=query)
+                            hits = response["hits"]["hits"]
+                            doc = hits[0]
+                            doc_id = hits[0]["_id"]
+                            otk_ident_pub = Ed25519PublicKey.from_public_bytes(base64.urlsafe_b64decode(doc["_source"]["makers_public_key"]))
+                            otk_ident_pub.verify(invalidate_signature, key_id.encode())
+
+                        
+                        
+                            db.delete(index="wbms_database", id=doc_id)
+                        except Exception as e:
+                            print(f'failed to invalidate OTK: {e}')
                         conn.sendall(b"invalidated")
                         break
                     else:

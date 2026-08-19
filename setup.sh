@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-rm -rf client1 client2
+rm -rf client1 client2 client3
 
-mkdir -p client1 client2
+mkdir -p client1 client2 client3
 
 cp -R cli_client/. client1/
 cp -R cli_client/. client2/

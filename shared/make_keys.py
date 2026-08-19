@@ -87,7 +87,7 @@ def make_otks(contact_id):
         Path(otk_dir/"priv.bin").write_bytes(private_key.private_bytes(encoding=serialization.Encoding.Raw,format=serialization.PrivateFormat.Raw,encryption_algorithm=serialization.NoEncryption()))
         timestamp = int(time.time())
         
-        _, priv_identify_key = grab_identify_keys()
+        pub_identify_key, priv_identify_key = grab_identify_keys()
         # signs the prekey with the identify key to prove ownership of the prekey
         otk_signature = priv_identify_key.sign(public_bytes) # type: ignore
         
@@ -96,6 +96,7 @@ def make_otks(contact_id):
         "key_id": otk_id,
         "timestamp": timestamp,
         "public_key": base64.urlsafe_b64encode(public_bytes).decode(), # the otk public key
+        "makers_public_key": base64.urlsafe_b64encode(pub_identify_key.public_bytes(encoding=serialization.Encoding.Raw,format=serialization.PublicFormat.Raw)).decode(),
         "otk_signature": base64.urlsafe_b64encode(otk_signature).decode(),
         "type_of_key_or_message": "otk", # the type of key
         "request": False # post request

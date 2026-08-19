@@ -209,7 +209,7 @@ def first_message_send_init(contact_id, message, sender_id):
         raise NoKeyFound("no otk key found on server")    
     
     try:
-        otk_json = keys.grab_type_from_server(contact_id, "otk", consume=True)[0]['_source'] # type: ignore
+        otk_json = keys.grab_type_from_server(contact_id, "otk")[0]['_source'] # type: ignore
     except (IndexError,TypeError):
         logger.error("No otk found for contact %s", contact_id)
         raise NoKeyFound("no pre key found on server")

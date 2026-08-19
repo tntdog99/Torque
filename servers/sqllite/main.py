@@ -1,7 +1,7 @@
 import socket
 import json
 import urllib3
-
+import secrets
 
 
 import datetime
@@ -189,7 +189,7 @@ while True:
                 database_request = json.loads(data.decode())
                 if database_request.get('request') == True:
                     # grabs the requested data (message or key) from the database
-                    if database_request.get('type_of_key_or_message') == 'otk' and database_request.get('consume'):
+                    if database_request.get('type_of_key_or_message') == 'otk':
                         cur.execute(
                             "SELECT id, document FROM wbms_database WHERE contact_id=? AND type_of_key_or_message=? LIMIT 1",
                             (database_request['contact_id'], database_request['type_of_key_or_message']),
@@ -201,17 +201,39 @@ while True:
                         else:
                             sent = [hits[0]]
                             doc_id = hits[0]["_id"]
-                            try:
-                                cur.execute("DELETE FROM wbms_database WHERE id=?", (int(doc_id),))
-                                con.commit()
-                            except Exception as e:
-                                print(f"Failed to delete consumed OTK: {e}")
                     elif database_request.get('type_of_key_or_message') == 'otk_invalidate':
-                        cur.execute(
-                            "DELETE FROM wbms_database WHERE contact_id=? AND type_of_key_or_message='otk' AND key_id=?",
-                            (database_request['contact_id'], database_request['key_id']),
-                        )
-                        con.commit()
+                        try:
+                            key_id = database_request['key_id']
+                            invalidate_signature = base64.urlsafe_b64decode(database_request['invalidate_signature'])
+                            
+                            cur.execute(
+                                """
+                                SELECT id, contact_id, document
+                                FROM wbms_database
+                                WHERE type_of_key_or_message = 'otk'
+                                AND key_id = ?
+                                LIMIT 1
+                                """,
+                                (database_request["key_id"],),
+                            )
+
+                            row = cur.fetchone()
+
+
+                            otk_document = json.loads(row["document"])
+                            otk_public_key = otk_document["makers_public_key"]
+                            
+                            otk_ident_pub = Ed25519PublicKey.from_public_bytes(base64.urlsafe_b64decode(otk_public_key))
+                            otk_ident_pub.verify(invalidate_signature, key_id.encode())
+                            
+                            
+                            cur.execute(
+                                "DELETE FROM wbms_database WHERE id=?",
+                                (row["id"],),
+                            )
+                            con.commit()
+                        except Exception as e:
+                            print(f'failed to invalidate OTK: {e}')
                         conn.sendall(b"invalidated")
                         break
                     else:

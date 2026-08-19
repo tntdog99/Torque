@@ -78,7 +78,7 @@ def make_connection_rand():
 
 
 
-def grab_type_from_server(contact_id, type, consume=False):
+def grab_type_from_server(contact_id, type):
     """
     grabs a key or message from the server given a contact id and a type of key / message
     """
@@ -88,7 +88,6 @@ def grab_type_from_server(contact_id, type, consume=False):
         "request": True, # tells the server that this is a request
         "type_of_key_or_message": type, # the type of key or message
         "contact_id": contact_id, # the contact id / user id
-        "consume": consume,
     }
     try:
         connection = make_connection_rand() # grabs a random connection from the list
@@ -127,7 +126,7 @@ def send_to_all_servers(data):
             logging.exception(e)
             
         
-def get_from_all_servers(contact_id, type, consume=False):
+def get_from_all_servers(contact_id, type):
     """
     grabs data from all the servers
     """
@@ -137,7 +136,6 @@ def get_from_all_servers(contact_id, type, consume=False):
         "request": True, # tells the server that this is a request
         "type_of_key_or_message": type, # the type of key or message
         "contact_id": contact_id, # the contact id / user id
-        "consume": consume,
     }
     messages = []
     for connection in connect_to_all_servers():

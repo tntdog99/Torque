@@ -123,7 +123,9 @@ def grab_message_log(my_contact_id, contact_id):
     try:
         their_messages_raw = keys.get_from_all_servers(my_contact_id, 'message')
     except ConnectionError:
+        their_messages_raw = []
         pass
+    
     temp = []
     for msg in their_messages_raw:
         if msg['_source'] is None:
