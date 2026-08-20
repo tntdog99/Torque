@@ -1,0 +1,29 @@
+[tool.pylint.basic]
+ignore = [
+    ".git",
+    ".gitignore",
+    "README.md",
+    "serverlist.csv",
+    "RobotoMono.ttf",
+    "LICENCE",
+    "setup.sh",
+    "setup.ps1",
+    "requirements.txt"
+]
+[tool.pylint.format]
+max-line-length = 150
+
+
+
+[tool.ruff]
+extend-exclude = [
+    ".git",
+    ".gitignore",
+    "README.md",
+    "serverlist.csv",
+    "RobotoMono.ttf",
+    "LICENCE",
+    "setup.sh",
+    "setup.ps1",
+    "requirements.txt"
+]

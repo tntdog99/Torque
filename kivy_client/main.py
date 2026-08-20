@@ -1,27 +1,28 @@
-import messages
-import keys
-import make_keys
 import base64
-from cryptography.hazmat.primitives import serialization
-from pathlib import Path
 import json
 import os
+import threading
+from pathlib import Path
+from typing import Any
 
+import keys
 import kivy
-kivy.require('2.3.1')
+import make_keys
+import messages
+from cryptography.hazmat.primitives import serialization
 from kivy.app import App
+from kivy.clock import Clock
+from kivy.graphics import Color, RoundedRectangle
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
-from kivy.uix.scrollview import ScrollView
 from kivy.uix.popup import Popup
+from kivy.uix.scrollview import ScrollView
 from kivy.uix.textinput import TextInput
-from kivy.clock import Clock
-from kivy.graphics import Color, RoundedRectangle
 from kivy.uix.widget import Widget
 
+kivy.require('2.3.1')
 
-import threading
 
 
 
@@ -48,8 +49,7 @@ def check_if_starting_keys_exist():
     bundle = Path(storage_path / "pub_bundle.json").is_file()
     return bundle
 
-def new_keys(instance):
-    global pubkey, pubkey_bytes
+def new_keys(_):
     contact_id = base64.urlsafe_b64encode(pubkey_bytes).decode()
     contact_path = storage_path/"contacts"/contact_id
     otk_path = contact_path/"otks"
@@ -59,20 +59,20 @@ def new_keys(instance):
     make_keys.make_otks(contact_id)
 
     for otk in otk_path.iterdir():
-        otk_data = Path(otk/"semi_pub.json").read_text()
+        otk_data = Path(otk/"semi_pub.json").read_text(encoding='utf-8')
         otk_data = json.loads(otk_data)
         keys.send_to_all_servers(otk_data)
     clear()
-        
+
 
 
 
 def grab_contacts() -> list[dict]:
-    
+
     contacts_registry_path = Path(storage_path/"contact_registry.json")
     if not contacts_registry_path.exists():
         contacts_registry_path.write_text('[]')
-    contacts_registry_text = contacts_registry_path.read_text()
+    contacts_registry_text = contacts_registry_path.read_text(encoding='utf-8')
     contacts_registry_json = json.loads(contacts_registry_text)
     return contacts_registry_json
 
@@ -107,10 +107,10 @@ def grab_message_log(my_contact_id, contact_id):
     msg_path_sent.mkdir(parents=True, exist_ok=True)
     our_messages = []
     for file in msg_path_sent.iterdir():
-        message = json.loads(file.read_text())
+        message = json.loads(file.read_text(encoding='utf-8'))
         message['side'] = 'right'
         our_messages.append(message)
-        
+
     their_messages_raw = keys.get_from_all_servers(my_contact_id, 'message')
     temp = []
     for msg in their_messages_raw:
@@ -121,38 +121,40 @@ def grab_message_log(my_contact_id, contact_id):
         temp.append(msg['_source'])
     their_messages_raw = temp
     their_messages = []
-    for raw in their_messages_raw:      
+    for raw in their_messages_raw:
         check_msg_path = Path(msg_path_recv/f'{raw["uuid"]}.json')
         if  check_msg_path.exists():
-            inner = json.loads(check_msg_path.read_text())
+            inner = json.loads(check_msg_path.read_text(encoding='utf-8'))
         else:
             _, inner, _ = messages.decode_message(contact_id, raw)
-            if inner == None:
+            if inner is None:
                 continue
             check_msg_path.write_text(json.dumps(inner))
         inner['side'] = 'left'
         their_messages.append(inner)
-        
+
     seen_uuids = []
     their_messages_de_duped = []
-    
+
     for msg in their_messages:
-        
+
         if msg['uuid'] in seen_uuids:
             continue
-        else:
-            seen_uuids.append(msg['uuid'])
-            their_messages_de_duped.append(msg)
-    
-    
-    
+        seen_uuids.append(msg['uuid'])
+        their_messages_de_duped.append(msg)
+
+
+
     all_messages_compressed = our_messages+their_messages_de_duped
     all_messages_compressed.sort(key=lambda msg: msg['sent_time'])
     all_messages = []
     for message in all_messages_compressed:
-        message['message_bytes'] = messages.decompress(base64.urlsafe_b64decode(message["message_bytes"])    , message["compression_type"]).decode()
+        message['message_bytes'] = messages.decompress(
+            base64.urlsafe_b64decode(message["message_bytes"]),
+            message["compression_type"]
+            ).decode()
         all_messages.append(message)
-    return all_messages        
+    return all_messages
 
 
 
@@ -169,7 +171,7 @@ class MessageBubble(BoxLayout):
             **kwargs
         )
 
-        bubble = Label(
+        bubble: Any = Label(
             text=text,
             size_hint_x=0.65,
             size_hint_y=None,
@@ -178,7 +180,9 @@ class MessageBubble(BoxLayout):
             color=(1, 1, 1, 1),
         )
 
-        bubble.bind(width=lambda bubble, new_width: setattr(bubble, 'text_size', (new_width - 20, None)))
+        bubble.bind(
+            width=lambda bubble, new_width: setattr(bubble, 'text_size', (new_width - 20, None))
+            )
 
         def _update_heights(bubble, tex_size):
             bubble.height = tex_size[1] + 16
@@ -227,14 +231,14 @@ class chat_popup(BoxLayout):
             size_hint_y=None,
             height=48,
         )
-        
+
         spacer = Widget(size_hint_x=0.8)
         self.delete_button = Button(text='Delete', on_press=self.delete_contact)
-        
+
         self.hotbar_header.add_widget(spacer)
         self.hotbar_header.add_widget(self.delete_button)
-        
-        
+
+
         self.chat_id_label = Label(text='placeholder', size_hint_y=None, height=30)
         self.contact_id_label = Label(text='placeholder', size_hint_y=None, height=30)
 
@@ -242,7 +246,7 @@ class chat_popup(BoxLayout):
         self.add_widget(self.contact_id_label)
 
         self.scroll = ScrollView()
-        self.message_list = BoxLayout(
+        self.message_list: Any = BoxLayout(
             orientation='vertical',
             spacing=8,
             size_hint_y=None,
@@ -270,7 +274,6 @@ class chat_popup(BoxLayout):
 
 
     def load(self, contact_bundle):
-        global pubkey, pubkey_bytes
         self.contact_bundle = contact_bundle
         self.my_contact_id = base64.urlsafe_b64encode(pubkey_bytes).decode()
 
@@ -286,7 +289,7 @@ class chat_popup(BoxLayout):
             self.update_messages_event.cancel()
         self.update_messages_event = Clock.schedule_interval(self.update_messages, 5.0)
 
-        self.popup = Popup(title=self.chat_id, content=self)
+        self.popup: Any = Popup(title=self.chat_id, content=self)
         self.popup.bind(on_dismiss=self.on_dismiss)
         self.popup.open()
         self.redraw(0)
@@ -324,10 +327,10 @@ class chat_popup(BoxLayout):
     def on_dismiss(self, *args):
         if self.update_messages_event:
             self.update_messages_event.cancel()
-            self.update_messages_event = None      
-    
-    
-    
+            self.update_messages_event = None
+
+
+
     def delete_contact(self, _):
         contacts = grab_contacts()
         new_contacts = []
@@ -335,10 +338,10 @@ class chat_popup(BoxLayout):
             if contact['contact_id'] != self.contact_bundle['contact_id']:
                 new_contacts.append(self.contact_bundle)
         Path(storage_path/"contact_registry.json").write_text(json.dumps(new_contacts))
-        
-        
+
+
         self.popup.dismiss()
-        
+
 class choose_contact_popup(BoxLayout):
     # this entire class is a ******* mess and i hate it, should i try and fix it? maybe, but i wont
 
@@ -347,7 +350,7 @@ class choose_contact_popup(BoxLayout):
         self.popup = None
         self.form_popup = None
 
-        self.contact_list = BoxLayout(
+        self.contact_list: Any = BoxLayout(
             orientation='vertical',
             spacing=8,
             size_hint_y=None
@@ -363,13 +366,13 @@ class choose_contact_popup(BoxLayout):
     def load_contacts(self):
         self.contact_list.clear_widgets()
         contacts = grab_contacts()
-        
-        
-        
-        
-        
+
+
+
+
+
         for contact in contacts:
-            button = Button(
+            button: Any = Button(
                 text=contact['chat_name'],
                 size_hint_y=None,
                 height=50
@@ -377,11 +380,11 @@ class choose_contact_popup(BoxLayout):
             button.bind(on_press=lambda instance, c=contact: self.open_contact(c))
             self.contact_list.add_widget(button)
 
-        add_btn = Button(text="Add Contact", size_hint_y=None, height=50)
-        
-        
-        
-        
+        add_btn: Any = Button(text="Add Contact", size_hint_y=None, height=50)
+
+
+
+
         add_btn.bind(on_press=self.add_contact)
         self.contact_list.add_widget(add_btn)
 
@@ -415,30 +418,33 @@ class choose_contact_popup(BoxLayout):
 
         self.form_popup = Popup(title="Add Contact", content=layout, size_hint=(0.8, 0.5))
         self.form_popup.open()
-        
-        
-    def add_contact_final_send(self, instance):
+
+
+    def add_contact_final_send(self, _):
         contacts = grab_contacts()
         chat_name = self.add_contact_chat_name.text
         contact_id = self.add_contact_contact_id.text
-        if contact_id == None or len(contact_id.strip()) == 0:
+        if contact_id is None or len(contact_id.strip()) == 0:
             return
         new_contact = {"chat_name": chat_name, "contact_id": contact_id}
         contacts.append(new_contact)
         Path(storage_path/"contact_registry.json").write_text(json.dumps(contacts))
 
-        message, state = messages.first_message_send_init(contact_id, "first message", sender_id=base64.urlsafe_b64encode(pubkey_bytes).decode())
+        message, _ = messages.first_message_send_init(
+            contact_id, "first message",
+            sender_id=base64.urlsafe_b64encode(pubkey_bytes).decode()
+            )
         keys.send_to_all_servers(json.loads(message))
 
         if self.form_popup:
             self.form_popup.dismiss()
             self.form_popup = None
-                        
-    def add_contact_final_recv(self, instance):
+
+    def add_contact_final_recv(self, _):
         contacts = grab_contacts()
         chat_name = self.add_contact_chat_name.text
         contact_id = self.add_contact_contact_id.text
-        if contact_id == None or len(contact_id.strip()) == 0:
+        if contact_id is None or len(contact_id.strip()) == 0:
             return
         new_contact = {"chat_name": chat_name, "contact_id": contact_id}
         contacts.append(new_contact)
@@ -448,7 +454,9 @@ class choose_contact_popup(BoxLayout):
         if raw is None or len(raw) == 0:
             popup = Popup(
                 title='No message',
-                content=Label(text='No message yet, try sending one, or make sure that you share a server with the contact'),
+                content=Label(
+                    text='No message yet, try sending one, or make sure that you share a server with the contact'
+                    ),
                 size_hint=(0.6, 0.4)
             )
             popup.open()
@@ -456,12 +464,19 @@ class choose_contact_popup(BoxLayout):
         raw = raw[0]['_source']
 
         try:
-            inner, _ = messages.first_message_recv_init(contact_id, raw, base64.urlsafe_b64encode(pubkey_bytes).decode())
+            inner, _ = messages.first_message_recv_init(
+                contact_id, raw, base64.urlsafe_b64encode(pubkey_bytes).decode()
+                )
+            if inner is None:
+                if self.form_popup:
+                    self.form_popup.dismiss()
+                    self.form_popup = None
+                return
         except ConnectionError:
             if self.form_popup:
                 self.form_popup.dismiss()
                 self.form_popup = None
-            return None
+            return
         payload_bytes = base64.urlsafe_b64decode(inner["message_bytes"])
         message = messages.decompress(payload_bytes, inner["compression_type"]).decode()
         recv_path = Path(storage_path/"contacts"/contact_id/"messages"/"recv")
@@ -472,15 +487,15 @@ class choose_contact_popup(BoxLayout):
         if self.form_popup:
             self.form_popup.dismiss()
             self.form_popup = None
-                        
-    
-    
-    
-    
-    
-    
-    
-    
+
+
+
+
+
+
+
+
+
 class edit_serverlist_popup(BoxLayout):
 
     def __init__(self, **kwargs):
@@ -488,55 +503,55 @@ class edit_serverlist_popup(BoxLayout):
         self.popup = None
         self.form_popup = None
 
-        
+
         self.serverlist_csv_path = Path('serverlist.csv')
-        
-        contents = self.serverlist_csv_path.read_text()
-        
-        
+
+        contents = self.serverlist_csv_path.read_text(encoding='utf-8')
+
+
         self.edit_area = TextInput(text=contents)
-        
+
         self.submit_btn = Button(text="Apply", on_press=self.save_file)
-        
+
         self.add_widget(self.edit_area)
         self.add_widget(self.submit_btn)
-        
-        
-        
+
+
+
 
 
     def save_file(self, _):
         self.serverlist_csv_path.write_text(self.edit_area.text)
-        self.popup.dismiss()
-    
-    
+        if self.popup is not None:
+            self.popup.dismiss()
+
+
     def open(self):
         self.popup = Popup(title='serverlist.csv', content=self)
         self.popup.open()
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
+
+
+
+
+
+
+
+
+
+
+
+
+
 class home_screen(BoxLayout):
     def __init__(self, **kwargs):
         super().__init__(orientation='vertical', padding=20, spacing=10, **kwargs)
 
-        global pubkey, pubkey_bytes
         contact_id_label = Label(
-            text=f'Contact id',
+            text='Contact id',
             font_name='RobotoMono',
             size_hint_y=0.1
         )
-        contact_id_label_two = Label(
+        contact_id_label_two: Any = Label(
             text=base64.urlsafe_b64encode(pubkey_bytes).decode(),
             font_name='RobotoMono',
             valign='top',
@@ -552,15 +567,15 @@ class home_screen(BoxLayout):
         self.add_widget(contact_id_label)
         self.add_widget(contact_id_label_two)
 
-        chats = Button(text="Chats", size_hint_y=0.2)
+        chats: Any = Button(text="Chats", size_hint_y=0.2)
         chats.bind(on_press=self.open_contacts)
         self.add_widget(chats)
 
-        new_keys_btn = Button(text="New keys",size_hint_y=0.2)
+        new_keys_btn: Any = Button(text="New keys",size_hint_y=0.2)
         new_keys_btn.bind(on_press=new_keys)
         self.add_widget(new_keys_btn)
-        
-        edit_server_list_btn = Button(text="Edit serverlist.csv",size_hint_y=0.2)
+
+        edit_server_list_btn: Any = Button(text="Edit serverlist.csv",size_hint_y=0.2)
         edit_server_list_btn.bind(on_press=self.open_edit_server_list)
         self.add_widget(edit_server_list_btn)
 
@@ -574,20 +589,19 @@ class home_screen(BoxLayout):
     def open_edit_server_list(self, instance):
         edit = edit_serverlist_popup()
         edit.open()
-        
-        
-            
-            
-            
+
+
+
+
+
 class WBMS(App):
 
     def build(self):
         return home_screen()
 
-            
-            
-            
-            
+
+
+
+
 if __name__ == '__main__':
     WBMS().run()
-        

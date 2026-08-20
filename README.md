@@ -7,7 +7,7 @@ feel free to contribute
 
 ## Using
 
-run setup.ps1 or setup.sh 
+run setup.ps1 or setup.sh
 
 to create 3 clients
 first 2 are tui clients

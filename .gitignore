@@ -5,7 +5,7 @@ client3/
 **.db
 **.key
 **.crt
-.storage/ 
+.storage/
 
 
 .vscode

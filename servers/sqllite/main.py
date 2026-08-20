@@ -1,22 +1,20 @@
-import socket
-import json
-import urllib3
-
-
-
+import base64
 import datetime
-from pathlib import Path
+import json
+import socket
+import sqlite3
 import ssl
+from pathlib import Path
+
+import urllib3
 from cryptography import x509
+from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.x509.oid import NameOID
-urllib3.disable_warnings()
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
-from cryptography.exceptions import InvalidSignature
-import base64
+from cryptography.x509.oid import NameOID
 
-
+urllib3.disable_warnings()
 def verify_posted_key(doc):
     try:
         ident_pub = Ed25519PublicKey.from_public_bytes(
@@ -41,10 +39,8 @@ def verify_posted_key(doc):
                 base64.urlsafe_b64decode(doc["long_term_encryption_pub_sig"]),
                 base64.urlsafe_b64decode(doc["encrypt_pub"]),
             )
-        elif type_of_key == "message":
-            return True
         else:
-            return False
+            return type_of_key == "message"
     except (InvalidSignature, KeyError, ValueError):
         return False
     return True
@@ -52,7 +48,7 @@ def verify_posted_key(doc):
 
 
 
-import sqlite3
+
 
 
 
@@ -73,7 +69,9 @@ def generate_cert(cn, key_path, cert_path, days=3650):
         .public_key(key.public_key())
         .serial_number(x509.random_serial_number())
         .not_valid_before(datetime.datetime.now(datetime.timezone.utc))
-        .not_valid_after(datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=days))
+        .not_valid_after(
+            datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=days)
+            )
         .sign(key, hashes.SHA256())
     )
 
@@ -130,7 +128,7 @@ cur.execute(
 )
 cur.execute("CREATE INDEX IF NOT EXISTS idx_key_id ON wbms_database(contact_id, key_id)")
 con.commit()
-HOST = '0.0.0.0' 
+HOST = '0.0.0.0'
 PORT = 8080
 
 
@@ -154,7 +152,7 @@ def get_database_entry(id, type):
     )
     rows = cur.fetchall()
     return format_hits(rows)
-    
+
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
 
@@ -187,12 +185,13 @@ while True:
                 break
             try:
                 database_request = json.loads(data.decode())
-                if database_request.get('request') == True:
+                if database_request.get('request') is True:
                     # grabs the requested data (message or key) from the database
                     if database_request.get('type_of_key_or_message') == 'otk':
                         cur.execute(
                             "SELECT id, document FROM wbms_database WHERE contact_id=? AND type_of_key_or_message=? LIMIT 1",
-                            (database_request['contact_id'], database_request['type_of_key_or_message']),
+                            (database_request['contact_id'],
+                            database_request['type_of_key_or_message']),
                         )
                         rows = cur.fetchall()
                         hits = format_hits(rows)
@@ -204,8 +203,10 @@ while True:
                     elif database_request.get('type_of_key_or_message') == 'otk_invalidate':
                         try:
                             key_id = database_request['key_id']
-                            invalidate_signature = base64.urlsafe_b64decode(database_request['invalidate_signature'])
-                            
+                            invalidate_signature = base64.urlsafe_b64decode(
+                                database_request['invalidate_signature']
+                                )
+
                             cur.execute(
                                 """
                                 SELECT id, contact_id, document
@@ -222,11 +223,13 @@ while True:
 
                             otk_document = json.loads(row["document"])
                             otk_public_key = otk_document["makers_public_key"]
-                            
-                            otk_ident_pub = Ed25519PublicKey.from_public_bytes(base64.urlsafe_b64decode(otk_public_key))
+
+                            otk_ident_pub = Ed25519PublicKey.from_public_bytes(
+                                base64.urlsafe_b64decode(otk_public_key)
+                                )
                             otk_ident_pub.verify(invalidate_signature, key_id.encode())
-                            
-                            
+
+
                             cur.execute(
                                 "DELETE FROM wbms_database WHERE id=?",
                                 (row["id"],),
@@ -237,7 +240,10 @@ while True:
                         conn.sendall(b"invalidated")
                         break
                     else:
-                        database_response = get_database_entry(database_request['contact_id'],database_request['type_of_key_or_message'])  
+                        database_response = get_database_entry(
+                            database_request['contact_id'],
+                            database_request['type_of_key_or_message']
+                            )
                         if len(database_response) == 0:
                             sent = []
                         else:
@@ -248,7 +254,7 @@ while True:
                     # insert the document into the sqlite table
                     try:
                         if not verify_posted_key(database_request):
-                            conn.sendall(b"rejected") 
+                            conn.sendall(b"rejected")
                             break
                         cur.execute(
                             "INSERT INTO wbms_database (contact_id, type_of_key_or_message, key_id, document) VALUES (?,?,?,?)",
@@ -264,7 +270,7 @@ while True:
                         print(f"Failed to insert document: {e}")
                     conn.sendall(b"connected")
                     break
-                
+
             except json.JSONDecodeError:
                 # runs if the json packet is not fully received yet
                 print("not done")
@@ -272,5 +278,5 @@ while True:
             except (KeyError,UnicodeDecodeError, TimeoutError):
                 print('malformed input')
                 break
-            
+
     print("disconnected")

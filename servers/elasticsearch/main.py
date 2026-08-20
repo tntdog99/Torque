@@ -1,19 +1,21 @@
-import socket
-import json
-import urllib3
-import os
+import base64
 import datetime
-from pathlib import Path
+import json
+import os
+import socket
 import ssl
+from pathlib import Path
+
+import urllib3
 from cryptography import x509
+from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.x509.oid import NameOID
-
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
-from cryptography.exceptions import InvalidSignature
-import base64
+from cryptography.x509.oid import NameOID
+from elasticsearch import Elasticsearch
 
+urllib3.disable_warnings()
 
 
 
@@ -48,10 +50,8 @@ def verify_posted_key(doc):
                 base64.urlsafe_b64decode(doc["long_term_encryption_pub_sig"]),
                 base64.urlsafe_b64decode(doc["encrypt_pub"]),
             )
-        elif type_of_key == "message":
-            return True
         else:
-            return False  # only signed key types are postable this way
+            return type_of_key == "message"
     except (InvalidSignature, KeyError, ValueError):
         return False
     return True
@@ -70,7 +70,9 @@ def generate_cert(cn, key_path, cert_path, days=3650):
         .public_key(key.public_key())
         .serial_number(x509.random_serial_number())
         .not_valid_before(datetime.datetime.now(datetime.timezone.utc))
-        .not_valid_after(datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=days))
+        .not_valid_after(
+            datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=days)
+            )
         .sign(key, hashes.SHA256())
     )
 
@@ -111,8 +113,7 @@ context.load_cert_chain(certfile=str(cert_path), keyfile=str(key_path))
 
 
 
-urllib3.disable_warnings()
-from elasticsearch import Elasticsearch
+
 api_key = os.environ['API_KEY']
 
 db = Elasticsearch(
@@ -121,7 +122,7 @@ db = Elasticsearch(
     ca_certs=os.environ["ELASTICSEARCH_CA_CERT"],
     verify_certs=True,
 )
-HOST = '0.0.0.0' 
+HOST = '0.0.0.0'
 PORT = 8080
 
 
@@ -140,7 +141,7 @@ def get_database_entry(id, type):
             }
     response = db.search(index="wbms_database", body=query)
     return response["hits"]["hits"]
-    
+
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
 
@@ -173,15 +174,25 @@ while True:
                 break
             try:
                 database_request = json.loads(data.decode())
-                if database_request.get('request') == True:
+                if database_request.get('request') is True:
                     # grabs the requested data (message or key) from the database
                     if database_request.get('type_of_key_or_message') == 'otk':
                         query = {
                             "query": {
                                 "bool": {
                                     "filter": [
-                                        { "term": { "type_of_key_or_message.keyword": database_request['type_of_key_or_message'] } },
-                                        { "term": { "contact_id.keyword": database_request['contact_id'] } }
+                                        {
+                                            "term": {
+                                                "type_of_key_or_message.keyword":
+                                                    database_request['type_of_key_or_message']
+                                            }
+                                        },
+                                        {
+                                            "term": {
+                                                "contact_id.keyword":
+                                                    database_request['contact_id']
+                                            }
+                                        },
                                     ]
                                 }
                             },
@@ -197,16 +208,23 @@ while True:
                     elif database_request.get('type_of_key_or_message') == 'otk_invalidate':
                         try:
                             key_id = database_request['key_id']
-                            invalidate_signature = base64.urlsafe_b64decode(database_request['invalidate_signature'])
-                            
-                            
+                            invalidate_signature = base64.urlsafe_b64decode(
+                                database_request['invalidate_signature']
+                                )
+
+
                             query = {
                                 "query": {
                                     "bool": {
                                         "filter": [
                                             { "term": { "type_of_key_or_message.keyword": 'otk' } },
-                                            {"term": {"contact_id.keyword": database_request["contact_id"]}},
-                                            { "term": { "key_id.keyword": database_request['key_id'] } }
+                                            {
+                                                "term":{
+                                                    "contact_id.keyword":
+                                                        database_request["contact_id"]
+                                                    }
+                                            },
+                                            {"term":{ "key_id.keyword": database_request['key_id']}}
                                         ]
                                     }
                                 },
@@ -216,18 +234,23 @@ while True:
                             hits = response["hits"]["hits"]
                             doc = hits[0]
                             doc_id = hits[0]["_id"]
-                            otk_ident_pub = Ed25519PublicKey.from_public_bytes(base64.urlsafe_b64decode(doc["_source"]["makers_public_key"]))
+                            otk_ident_pub = Ed25519PublicKey.from_public_bytes(
+                                base64.urlsafe_b64decode(doc["_source"]["makers_public_key"])
+                                )
                             otk_ident_pub.verify(invalidate_signature, key_id.encode())
 
-                        
-                        
+
+
                             db.delete(index="wbms_database", id=doc_id)
                         except Exception as e:
                             print(f'failed to invalidate OTK: {e}')
                         conn.sendall(b"invalidated")
                         break
                     else:
-                        database_response = get_database_entry(database_request['contact_id'],database_request['type_of_key_or_message'])  
+                        database_response = get_database_entry(
+                            database_request['contact_id'],
+                            database_request['type_of_key_or_message']
+                            )
                         if len(database_response) == 0:
                             sent = []
                         else:
@@ -236,12 +259,12 @@ while True:
                     break
                 else:
                     if not verify_posted_key(database_request):
-                        conn.sendall(b"rejected") 
+                        conn.sendall(b"rejected")
                         break
                     database_response = db.index(index="wbms_database", document=database_request)
                     conn.sendall(b"connected")
                     break
-                
+
             except json.JSONDecodeError:
                 # runs if the json packet is not fully received yet
                 print("not done")
@@ -249,5 +272,5 @@ while True:
             except (KeyError,UnicodeDecodeError, TimeoutError):
                 print('malformed input')
                 break
-            
+
     print("disconnected")
