@@ -1,6 +1,6 @@
 
-# WBMS
-WBNS is a end-to-end encrypted decentralized messaging platform
+# Torque
+Torque is a end-to-end encrypted decentralized messaging platform
 
 feel free to contribute
 
