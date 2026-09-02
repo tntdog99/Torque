@@ -262,7 +262,9 @@ def ratchet_encrypt(
                     )
                 ).decode() if throw_pub else None,
         "start": start,
-        "lte_sig": lte_pub_sig,
+        "lte_sig": (
+            base64.urlsafe_b64encode(lte_pub_sig).decode()
+        ),
         "lte":
             base64.urlsafe_b64encode(
                 lte_pub.public_bytes(

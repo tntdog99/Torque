@@ -27,6 +27,9 @@ urllib3.disable_warnings()
 
 
 def verify_posted_key(doc):
+    type_of_key = doc.get("type_of_key_or_message")
+    if type_of_key == "message":
+        return True
     try:
         ident_pub = Ed25519PublicKey.from_public_bytes(
             base64.urlsafe_b64decode(doc["contact_id"])
@@ -34,7 +37,6 @@ def verify_posted_key(doc):
     except Exception:
         return False
 
-    type_of_key = doc.get("type_of_key_or_message")
     try:
         if type_of_key == "otk":
             ident_pub.verify(
