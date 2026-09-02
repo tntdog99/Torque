@@ -133,9 +133,8 @@ def load_ratchet(exported):
     recv_chain_key = base64.urlsafe_b64decode(
         exported["recv_chain_key"]
         ) if exported["recv_chain_key"] else None
-    ratchet_pub = X25519PublicKey.from_public_bytes
-    (base64.urlsafe_b64decode(exported["ratchet_pub"])
-     ) if exported["ratchet_pub"] else None
+    ratchet_pub = X25519PublicKey.from_public_bytes(base64.urlsafe_b64decode(exported["ratchet_pub"])
+    ) if exported["ratchet_pub"] else None
     ratchet_priv = X25519PrivateKey.from_private_bytes(
         base64.urlsafe_b64decode(exported["ratchet_priv"])
         ) if exported["ratchet_priv"] else None
@@ -190,7 +189,7 @@ def initialize_ratchet(contact_id, ratchet_pub, ratchet_priv, new_key, prekey_pu
     return ratchet_state
 
 
-def initialize_ratchet_recv(contact_id, ratchet_pub, ratchet_priv, new_key):
+def initialize_ratchet_recv(contact_id, ratchet_pub, ratchet_priv, new_key, prekey_pub=None):
     logger.debug("Initializing receive-only ratchet state for contact %s", contact_id)
     root_key = new_key
     send_chain_key = None
@@ -246,10 +245,12 @@ def ratchet_encrypt(
     "uuid": msg_uuid,
     }
     header = json.dumps(header_fields, separators=(',', ':'), sort_keys=True)
-    encrypted_payload = aesgcm.encrypt(nonce, msg, header.encode())
+    encrypted_payload = aesgcm.encrypt(nonce, msg, header.encode("utf-8"))
 
     outer_message = {
         "type_of_key_or_message": "message",
+        "contact_id": contact_id,
+        "sender_id": sender_id,
         "key_id": otk_id,
         "encrypted_payload": base64.urlsafe_b64encode(encrypted_payload).decode(),
         "header": header,
@@ -291,7 +292,6 @@ def ratchet_decrypt(ratchet_state, outer_message):
     full_header = json.loads(msg['header'])
     header = full_header['ratchet_header']
     logger.debug("Ratchet decrypt started for incoming message number %s", header['message_number'])
-    header_check = full_header['ratchet_header']
     encrypted_payload = base64.urlsafe_b64decode(msg["encrypted_payload"])
     nonce = base64.urlsafe_b64decode(msg["nonce"])
     incoming_ratchet_pub = header['ratchet_pub']
@@ -303,7 +303,8 @@ def ratchet_decrypt(ratchet_state, outer_message):
     if skipped_key:
         logger.debug("Using skipped key for retained message %s", header['message_number'])
         del ratchet_state.skipped_message_keys[f"{incoming_ratchet_pub}:{header['message_number']}"]
-        return AESGCM(skipped_key).decrypt(nonce, encrypted_payload, header_check.encode())
+        header_check = json.dumps(full_header, separators=(',', ':'), sort_keys=True)
+        return AESGCM(skipped_key).decrypt(nonce, encrypted_payload, header_check.encode("utf-8"))
 
 
     current_contact_pub = base64.urlsafe_b64encode(
@@ -373,7 +374,8 @@ def ratchet_decrypt(ratchet_state, outer_message):
         header['message_number'],
         ratchet_state.recv_msg_number
         )
-    return AESGCM(msg_key).decrypt(nonce, encrypted_payload, header_check.encode())
+    header_check = json.dumps(full_header, separators=(',', ':'), sort_keys=True)
+    return AESGCM(msg_key).decrypt(nonce, encrypted_payload,  header_check.encode("utf-8"))
 
 
 

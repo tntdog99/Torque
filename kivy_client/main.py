@@ -122,7 +122,8 @@ def grab_message_log(my_contact_id, contact_id):
     their_messages_raw = temp
     their_messages = []
     for raw in their_messages_raw:
-        check_msg_path = Path(msg_path_recv/f'{raw["uuid"]}.json')
+        header_obj = json.loads(raw["header"])
+        check_msg_path = Path(msg_path_recv/f'{header_obj["uuid"]}.json')
         if  check_msg_path.exists():
             inner = json.loads(check_msg_path.read_text(encoding='utf-8'))
         else:
@@ -137,10 +138,10 @@ def grab_message_log(my_contact_id, contact_id):
     their_messages_de_duped = []
 
     for msg in their_messages:
-
-        if msg['uuid'] in seen_uuids:
+        header_obj = json.loads(msg["header"])
+        if header_obj['uuid'] in seen_uuids:
             continue
-        seen_uuids.append(msg['uuid'])
+        seen_uuids.append(header_obj['uuid'])
         their_messages_de_duped.append(msg)
 
 
@@ -448,7 +449,7 @@ class choose_contact_popup(BoxLayout):
             return
         new_contact = {"chat_name": chat_name, "contact_id": contact_id}
         contacts.append(new_contact)
-        Path(storage_path/"contact_registry.json").write_text(json.dumps(contacts))
+        Path(storage_path/"contact_registry.json").write_text(json.dumps(contacts), encoding="utf-8")
 
         raw = keys.grab_type_from_server(base64.urlsafe_b64encode(pubkey_bytes).decode(), "message")
         if raw is None or len(raw) == 0:
@@ -481,7 +482,8 @@ class choose_contact_popup(BoxLayout):
         message = messages.decompress(payload_bytes, inner["compression_type"]).decode()
         recv_path = Path(storage_path/"contacts"/contact_id/"messages"/"recv")
         recv_path.mkdir(parents=True, exist_ok=True)
-        Path(recv_path/f'{raw["uuid"]}.json').write_text(json.dumps(inner))
+        header_obj = json.loads(raw["header"])
+        Path(recv_path/f'{header_obj["uuid"]}.json').write_text(json.dumps(inner), encoding="utf-8")
         print(message)
 
         if self.form_popup:

@@ -297,9 +297,7 @@ def first_message_recv_init(contact_id, msg, my_contact_id):
 
     full_header = json.loads(msg['header'])
 
-    # dont really know why i made two headers, dont care enough to look into it, if its not broken dont fix it
     header = full_header['ratchet_header']
-    header_check = full_header['ratchet_header']
 
     nonce = base64.urlsafe_b64decode(msg['nonce'])
 
@@ -328,32 +326,39 @@ def first_message_recv_init(contact_id, msg, my_contact_id):
         new_pub,
         new_priv,
         new_key,
-        prekey_pub
+        prekey_pub,
         )
     ratchet_state.ratchet_pub_contact = make_x25519_pub(header['ratchet_pub'])
 
     new_thing = prekey_priv.exchange(ratchet_state.ratchet_pub_contact)
-    ratchet_state.root_key, ratchet_state.recv_chain_key = ratchet.kdf_root(
-        ratchet_state.root_key,
-        new_thing
-        )
+    ratchet_state.root_key, ratchet_state.recv_chain_key = ratchet.kdf_root(ratchet_state.root_key, new_thing)
 
-
-
+    
+    
     ratchet_state.ratchet_priv = new_priv
     ratchet_state.ratchet_pub = new_pub
     dh_out2 = ratchet_state.ratchet_priv.exchange(ratchet_state.ratchet_pub_contact)
-    ratchet_state.root_key, ratchet_state.send_chain_key = ratchet.kdf_root(
-        ratchet_state.root_key,
-        dh_out2
-        )
+    ratchet_state.root_key, ratchet_state.send_chain_key = ratchet.kdf_root(ratchet_state.root_key, dh_out2)
+
 
 
 
     msg_key, ratchet_state.recv_chain_key = ratchet.kdf_chain(ratchet_state.recv_chain_key)
 
     aesgcm = AESGCM(msg_key)
-    decrypted_payload = aesgcm.decrypt(nonce, payload, header_check.encode())
+    
+    
+    aad = json.dumps(
+    full_header,
+    separators=(",", ":"),
+    sort_keys=True,
+    )
+    try:
+        decrypted_payload = aesgcm.decrypt(nonce, payload, aad.encode("utf-8"))
+    except InvalidTag:
+        logger.debug("Failed to decrypt message for contact %s", contact_id)
+        return None, None
+
     logger.debug("Successfully decrypted first message for contact %s", contact_id)
 
 
@@ -403,12 +408,20 @@ def encode_message(contact_id, message, sender_id):
         )
 
     logger.debug("Encoding regular message for contact %s", contact_id)
+    _, identify_priv = make_keys.grab_identify_keys()
+    lte_pub, _ = make_keys.grab_long_term_encrypttion_keys()
+    encrypt_pub_bytes = lte_pub.public_bytes(
+    serialization.Encoding.Raw,
+    serialization.PublicFormat.Raw
+    )
+    long_term_encryption_pub_sig = identify_priv.sign(encrypt_pub_bytes) # type: ignore
     outer_message = ratchet.ratchet_encrypt(
         ratchet_state,
         json.dumps(inner).encode(),
         contact_id,
         None, None,
-        sender_id=sender_id
+        sender_id=sender_id,
+        lte_pub_sig=long_term_encryption_pub_sig,
         )
     ratchet_state.save(contact_id)
     logger.debug("Encoded regular message for contact %s", contact_id)

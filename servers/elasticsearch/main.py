@@ -1,6 +1,7 @@
 import base64
 import datetime
 import json
+import logging
 import os
 import socket
 import ssl
@@ -15,6 +16,10 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from cryptography.x509.oid import NameOID
 from elasticsearch import Elasticsearch
 
+
+logging.basicConfig(filename='wbms_server.log', level=logging.DEBUG,
+                     format='%(asctime)s %(message)s')
+logger = logging.getLogger(__name__)
 urllib3.disable_warnings()
 
 
@@ -262,6 +267,7 @@ while True:
                 else:
                     if not verify_posted_key(database_request):
                         conn.sendall(b"rejected")
+                        logger.warning("Invalid signature for document: %s", database_request)
                         break
                     database_response = db.index(index="wbms_database", document=database_request)
                     conn.sendall(b"connected")

@@ -1,6 +1,7 @@
 import base64
 import datetime
 import json
+import logging
 import socket
 import sqlite3
 import ssl
@@ -13,6 +14,12 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from cryptography.x509.oid import NameOID
+logging.basicConfig(filename='wbms_server.log', level=logging.DEBUG,
+                     format='%(asctime)s %(message)s')
+logger = logging.getLogger(__name__)
+
+
+
 
 urllib3.disable_warnings()
 def verify_posted_key(doc):
@@ -263,6 +270,8 @@ while True:
                     # insert the document into the sqlite table
                     try:
                         if not verify_posted_key(database_request):
+                            logger.warning("Invalid signature for document: %s", database_request)
+                            
                             conn.sendall(b"rejected")
                             break
                         cur.execute(
