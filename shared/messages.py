@@ -282,10 +282,35 @@ def first_message_send_init(contact_id, message, sender_id):
 def first_message_recv_init(contact_id, msg, my_contact_id):
 
     contact_path = storage_path/"contacts"/my_contact_id
-    verifying_key = Ed25519PublicKey.from_public_bytes(base64.urlsafe_b64decode(contact_id))
-
+    try:
+        verifying_key = Ed25519PublicKey.from_public_bytes(base64.urlsafe_b64decode(contact_id))
+    except ValueError:
+        logger.error("Invalid contact_id format for contact %s", contact_id)
+        return None, None
     prekey_priv = Path(contact_path/"semi_priv.bin").read_bytes()
     prekey_priv = X25519PrivateKey.from_private_bytes(prekey_priv)
+
+
+
+    # make sure the format of the message is correct
+    
+    try:
+        # pylint: disable=pointless-statement
+        msg['lte_sig']
+        msg['lte']
+        msg['key_id']
+        msg['encrypted_payload']
+        msg['header']
+        msg['nonce']
+        msg['throw_pub']
+        full_header = json.loads(msg['header'])
+        full_header['ratchet_header']
+        full_header['ratchet_header']['ratchet_pub']
+        # pylint: enable=pointless-statement
+    except (KeyError, json.JSONDecodeError) as e:
+        logger.exception("Missing key or invalid json in message for contact %s: %s", contact_id, e)
+        return None, None
+
 
     try:
         check_sig(msg['lte_sig'], msg['lte'], verifying_key)
@@ -333,8 +358,8 @@ def first_message_recv_init(contact_id, msg, my_contact_id):
     new_thing = prekey_priv.exchange(ratchet_state.ratchet_pub_contact)
     ratchet_state.root_key, ratchet_state.recv_chain_key = ratchet.kdf_root(ratchet_state.root_key, new_thing)
 
-    
-    
+
+
     ratchet_state.ratchet_priv = new_priv
     ratchet_state.ratchet_pub = new_pub
     dh_out2 = ratchet_state.ratchet_priv.exchange(ratchet_state.ratchet_pub_contact)
@@ -346,8 +371,8 @@ def first_message_recv_init(contact_id, msg, my_contact_id):
     msg_key, ratchet_state.recv_chain_key = ratchet.kdf_chain(ratchet_state.recv_chain_key)
 
     aesgcm = AESGCM(msg_key)
-    
-    
+
+
     aad = json.dumps(
     full_header,
     separators=(",", ":"),
