@@ -196,7 +196,7 @@ def make_inner_message(
     msg_path = Path(
         storage_path/"contacts"/contact_id/"messages"/'sent'/f"{int(time.time())!s}{uuid.uuid4()!s}.json"
         )
-    msg_path.write_text(json.dumps(inner_message))
+    msg_path.write_text(json.dumps(inner_message), encoding='utf-8')
     return inner_message
 
 def consume_otk(key_id, contact_id):
@@ -219,15 +219,15 @@ def first_message_send_init(contact_id, message, sender_id):
 
     try:
         prekey_bundle = keys.grab_type_from_server(contact_id, "semi_key")[0]['_source'] # type: ignore
-    except (IndexError,TypeError):
+    except (IndexError,TypeError) as e:
         logger.error("No semi_key found for contact %s", contact_id)
-        raise NoKeyFound("no otk key found on server")
+        raise NoKeyFound("no otk key found on server") from e
 
     try:
         otk_json = keys.grab_type_from_server(contact_id, "otk")[0]['_source'] # type: ignore
-    except (IndexError,TypeError):
+    except (IndexError,TypeError) as e:
         logger.error("No otk found for contact %s", contact_id)
-        raise NoKeyFound("no pre key found on server")
+        raise NoKeyFound("no pre key found on server") from e
 
     if otk_json is None:
         logger.error("Empty otk payload for contact %s", contact_id)

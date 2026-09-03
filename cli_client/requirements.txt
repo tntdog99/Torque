@@ -1,3 +1,4 @@
 cryptography
 prompt_toolkit
 rich
+PySocks

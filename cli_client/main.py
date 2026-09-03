@@ -482,6 +482,91 @@ def choose_contact():
 
 
 
+def remove_part(path):
+    return '/'.join(path.removesuffix('/').split('/')[:len(path.removesuffix('/').split('/'))-1])
+
+
+def add_part(path, part):
+    return path.removesuffix('/')+'/'+part
+
+def format_options(options):
+    formatted_options = []
+    option_type = {}
+    for key, value in options.items():
+        if isinstance(value, dict):
+            formatted_options.append((key, f"{key}/"))
+        elif isinstance(value, int):
+            formatted_options.append((key, f"{key}: {value}"))
+        elif isinstance(value, str):
+            formatted_options.append((key, f"{key}: '{value}'"))
+        elif isinstance(value, bool):
+            formatted_options.append((key, f"{key}: {value}"))
+    return formatted_options
+def config_page(page, config_path):
+    clear()
+
+    if not config_path.exists():
+        default_config = {
+            "tor": {
+                "enabled": True,
+                "only use tor for .onion": True,
+                "proxy": "127.0.0.1:9050",
+            }  
+        }
+        config_path.write_text(json.dumps(default_config), encoding='utf-8')
+    try:
+        while True:
+            clear()
+            config = json.loads(config_path.read_text(encoding='utf-8'))
+            current_path = page.removesuffix('/').split('/')
+            current = config
+            for part in current_path[1:]:
+                current = current[part]
+            current_config_page = current
+            options = format_options(current_config_page)
+            next_page = choice(message=f"Config page: {page}", options=options)
+            chosen_type = type(current_config_page[next_page])
+            if chosen_type == dict:
+                print(f"Entering {add_part(page, next_page)} config page")
+                config_page(add_part(page, next_page), config_path)
+            elif chosen_type == int:
+                try:
+                    new_value = prompt(
+                        message=f"Enter the new value for {add_part(page, next_page)}: "
+                        )
+                    if new_value is None or len(new_value.strip()) == 0:
+                        raise KeyboardInterrupt
+                    try:
+                        new_value_int = int(new_value)
+                    except ValueError:
+                        print("Invalid value. Must be an integer.")
+                        continue
+                    current_config_page[next_page] = new_value_int
+                    config_path.write_text(json.dumps(config), encoding='utf-8')
+                except KeyboardInterrupt:
+                    pass
+            elif chosen_type == str:
+                try:
+                    new_value = prompt(
+                        message=f"Enter the new value for {add_part(page, next_page)}: "
+                        )
+                    if new_value is None or len(new_value.strip()) == 0:
+                        raise KeyboardInterrupt
+                    current_config_page[next_page] = new_value
+                    config_path.write_text(json.dumps(config), encoding='utf-8')
+                except KeyboardInterrupt:
+                    pass
+            elif chosen_type == bool:
+                current_config_page[next_page] = not current_config_page[next_page]
+                config_path.write_text(json.dumps(config), encoding='utf-8')
+      
+    except (KeyboardInterrupt, KeyError):
+        return remove_part(page)
+
+
+
+
+
 def home(default_choice=None):
     clear()
     contact_id = base64.urlsafe_b64encode(pubkey_bytes).decode()
@@ -492,6 +577,7 @@ def home(default_choice=None):
         menu_choice = choice(message='Choose chat', options=[
             ('chats', "Contacts"),
             ("new_keys", "Make new keys"),
+            ("config", "Edit config"),
         ])
     if menu_choice == 'chats':
         clear()
@@ -515,6 +601,8 @@ def home(default_choice=None):
             otk_data = Path(otk/"semi_pub.json").read_text(encoding='utf-8')
             otk_data = json.loads(otk_data)
             keys.send_to_all_servers(otk_data)
+    if menu_choice == 'config':
+        config_page("/", Path(storage_path/"config.json"))
 result = None
 while True:
     try:

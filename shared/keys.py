@@ -6,7 +6,8 @@ import random
 import socket
 import ssl
 from pathlib import Path
-
+import socks
+config_path = Path(__file__).resolve().parent / ".storage" / "config.json"
 # handles most of the networking for talking to the servers
 logging.basicConfig(filename='wbms_client.log', level=logging.DEBUG,
                      format='%(asctime)s %(message)s')
@@ -18,8 +19,17 @@ def connect_pinned(host, port, expected_fingerprint, timeout=5):
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     context.check_hostname = False
     context.verify_mode = ssl.CERT_NONE
-
-    raw_sock = socket.socket()
+    config = json.loads(config_path.read_text())
+    tor_enabled = config.get('tor').get('enabled', False)
+    if tor_enabled:
+        if config.get('tor').get("only use tor for .onion", True) is False or host.endswith(".onion"):
+            proxy = config.get('tor').get("proxy", "127.0.0.1:9050").split(":")
+            raw_sock = socks.socksocket()
+            raw_sock.set_proxy(socks.SOCKS5, proxy[0], proxy[1])
+        else:
+            raw_sock = socket.socket()
+    else:
+        raw_sock = socket.socket()
     raw_sock.settimeout(timeout)
     raw_sock.connect((host, port))
     conn = context.wrap_socket(raw_sock, server_hostname=host)
