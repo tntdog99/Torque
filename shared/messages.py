@@ -114,27 +114,47 @@ def X3DH_recv(
 
 
 
-def check_sig(signature, signed_data, verifying_key: Ed25519PublicKey):
+def check_sig(signature: bytes, signed_data: bytes, verifying_key: Ed25519PublicKey):
+    """verifies a signature using the provided verifying key
+
+    Args:
+        signature (bytes): signature made from the private key
+        signed_data (bytes): the data to verify the signature against
+        verifying_key (Ed25519PublicKey): the public key from the pair that signed the data
+
+    Raises:
+        InvalidSignature: rasies the InvalidSignature if the data does not match
+    """
     try:
         verifying_key.verify(
             base64.urlsafe_b64decode(signature),
             base64.urlsafe_b64decode(signed_data)
             )
-    except InvalidSignature:
+    except InvalidSignature as e:
         logger.warning("Signature verification failed")
-        raise InvalidSignature("uh oh..")
+        raise e
 
 
-def make_x25519_pub(key):
-    """
-    returns a x25519 public key object from a base64 encoded string of the raw public key bytes
+def make_x25519_pub(key: str):
+    """takes a base64 encoded string and attempts to turn it into a X25519PublicKey
+
+    Args:
+        key (str): the string to convert
+
+    Returns:
+        X25519PublicKey: the X25519PublicKey
     """
 
     return X25519PublicKey.from_public_bytes(base64.urlsafe_b64decode(key))
 
-def make_x25519_priv(key):
-    """
-    returns a x25519 private key object from a base64 encoded string of the raw private key bytes
+def make_x25519_priv(key: str):
+    """takes a base64 encoded string and attempts to turn it into a X25519PrivateKey
+
+    Args:
+        key (str): the string to convert
+
+    Returns:
+        X25519PrivateKey: the X25519PrivateKey
     """
 
     return X25519PrivateKey.from_private_bytes(base64.urlsafe_b64decode(key))
@@ -142,11 +162,20 @@ def make_x25519_priv(key):
 
 
 class NoKeyFound(Exception):
-    pass
+    """raises when the key is not found in the expected place"""
 
-def compress(data, compression_type):
-    """
-    compresses the data using the specified compression type (gzip or lzma)
+def compress(data, compression_type: str):
+    """compresses the data using the specified compression type
+
+    Args:
+        data (ReadableBuffer): the data to compress
+        compression_type (str): the compression type (gzip, lzma)
+
+    Raises:
+        ValueError: raises for unsupported compression types
+
+    Returns:
+        bytes: the compressed bytes
     """
 
     if compression_type == "gzip":
@@ -158,8 +187,17 @@ def compress(data, compression_type):
 
 
 def decompress(data, compression_type):
-    """
-    decompresses the data using the specified compression type (gzip or lzma)
+    """decompresses the data using the specified compression type
+
+    Args:
+        data (bytes): the data to decompress
+        compression_type (str): the compression type (gzip, lzma)
+
+    Raises:
+        ValueError: raises for unsupported compression types
+
+    Returns:
+        bytes: the decompressed bytes
     """
 
     if compression_type == "gzip":

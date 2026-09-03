@@ -7,6 +7,7 @@ import shutil
 import textwrap
 import threading
 from pathlib import Path
+import time 
 
 import keys
 import make_keys
@@ -390,14 +391,24 @@ def choose_contact():
             contact_id = input_dialog(title="Add contact", text="Enter the contact id: ").run()
             if contact_id is None or len(contact_id.strip()) == 0:
                 raise KeyboardInterrupt
+            contacts_backup = contacts.copy()
             new_contact = {"chat_name": contact_id, "contact_id": contact_id}
             contacts.append(new_contact)
             Path(storage_path/"contact_registry.json").write_text(json.dumps(contacts), encoding="utf-8")
-            message, _ = messages.first_message_send_init(
-                contact_id,
-                "first message",
-                sender_id=base64.urlsafe_b64encode(pubkey_bytes).decode()
-                )
+            try: 
+                message, _ = messages.first_message_send_init(
+                    contact_id,
+                    "first message",
+                    sender_id=base64.urlsafe_b64encode(pubkey_bytes).decode()
+                    )
+            except messages.NoKeyFound:
+                print("Could not find the contact's public key. Make sure you have the correct contact id.")
+                Path(storage_path/"contact_registry.json").write_text(json.dumps(contacts_backup), encoding="utf-8")
+                time.sleep(2)
+                
+                
+                
+                return 'home'
             keys.send_to_all_servers(json.loads(message))
             return 'home'
         if contact_choice == "refresh":
@@ -505,15 +516,7 @@ def format_options(options):
 def config_page(page, config_path):
     clear()
 
-    if not config_path.exists():
-        default_config = {
-            "tor": {
-                "enabled": True,
-                "only use tor for .onion": True,
-                "proxy": "127.0.0.1:9050",
-            }  
-        }
-        config_path.write_text(json.dumps(default_config), encoding='utf-8')
+
     try:
         while True:
             clear()
@@ -588,7 +591,10 @@ def home(default_choice=None):
             return "refresh"
         if contact is None:
             logger.warning("choose_contact returned None, which does not refer to a valid state.")
-        details_screen(contact, contact_id)
+        try:
+            details_screen(contact, contact_id)
+        except TypeError:
+            logger.exception("details_screen raised TypeError, likely due to invalid contact data.")
     if menu_choice == 'new_keys':
         contact_path = storage_path/"contacts"/contact_id
         otk_path = contact_path/"otks"

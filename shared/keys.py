@@ -13,6 +13,18 @@ logging.basicConfig(filename='wbms_client.log', level=logging.DEBUG,
                      format='%(asctime)s %(message)s')
 logger = logging.getLogger(__name__)
 
+(Path(__file__).resolve().parent/".storage").mkdir(parents=True, exist_ok=True)
+if not config_path.exists():
+    default_config = {
+        "tor": {
+            "enabled": True,
+            "only use tor for .onion": True,
+            "proxy": "127.0.0.1:9050",
+        }
+    }
+    config_path.write_text(json.dumps(default_config), encoding='utf-8')
+
+
 def _fingerprint(der_cert_bytes):
     return hashlib.sha256(der_cert_bytes).hexdigest()
 def connect_pinned(host, port, expected_fingerprint, timeout=5):
@@ -122,7 +134,7 @@ def grab_type_from_server(contact_id, type):
                     logger.debug("not done")
                     continue
     except (ConnectionError, ssl.SSLError, OSError):
-        print('couldbt cibbect to server')
+        print('could not connect to server')
 
 def send_to_all_servers(data):
     """
