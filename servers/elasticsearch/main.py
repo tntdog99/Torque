@@ -32,15 +32,26 @@ urllib3.disable_warnings()
 
 
 def verify_posted_key(doc):
+
+
+
+
     type_of_key = doc.get("type_of_key_or_message")
-    if type_of_key == "message":
-        return True
+
+
     try:
-        ident_pub = Ed25519PublicKey.from_public_bytes(
-            base64.urlsafe_b64decode(doc["contact_id"])
-        )
+        if type_of_key == "message":
+            ident_pub = Ed25519PublicKey.from_public_bytes(
+                base64.urlsafe_b64decode(doc["sender_id"])
+            )
+        else:
+            ident_pub = Ed25519PublicKey.from_public_bytes(
+                base64.urlsafe_b64decode(doc["contact_id"])
+            )
     except Exception:
         return False
+
+
 
     try:
         if type_of_key == "otk":
@@ -57,8 +68,13 @@ def verify_posted_key(doc):
                 base64.urlsafe_b64decode(doc["long_term_encryption_pub_sig"]),
                 base64.urlsafe_b64decode(doc["encrypt_pub"]),
             )
-        else:
-            return type_of_key == "message"
+        elif type_of_key == "message":
+            outer_message_signature = base64.urlsafe_b64decode(doc.pop("outer_message_signature", None))
+            original_signed_outer_message = json.dumps(doc, separators=(',', ':'), sort_keys=True).encode("utf-8")
+            ident_pub.verify(
+                outer_message_signature,
+                original_signed_outer_message
+            )
     except (InvalidSignature, KeyError, ValueError):
         return False
     return True
