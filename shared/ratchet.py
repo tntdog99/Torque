@@ -232,6 +232,8 @@ def ratchet_encrypt(
     sender_id=None,
     lte_pub_sig=None
     ):
+    
+    _, identify_priv = make_keys.grab_identify_keys()
     msg_key = step_ratchet(ratchet_state)
     aesgcm = AESGCM(msg_key)
     nonce = os.urandom(12)
@@ -274,6 +276,8 @@ def ratchet_encrypt(
                     )
                 ).decode() if lte_pub else None,
     }
+    outer_message_signature = identify_priv.sign(json.dumps(outer_message, separators=(',', ':'), sort_keys=True).encode("utf-8")) # type: ignore
+    outer_message["outer_message_signature"] = base64.urlsafe_b64encode(outer_message_signature).decode()
     ratchet_state.message_number += 1
     logger.debug(
         "Encrypted ratchet message for contact %s message number %s",
