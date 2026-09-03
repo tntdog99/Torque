@@ -1,3 +1,6 @@
 make parity with kivy client
 
+add multipart messages
+add sender id based rate limiting
 add PoW to making and adding a new identity to the network
+add better docstrings to everything
