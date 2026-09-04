@@ -164,7 +164,7 @@ def make_x25519_priv(key: str):
 class NoKeyFound(Exception):
     """raises when the key is not found in the expected place"""
 
-def compress(data, compression_type: str):
+def compress(data: bytes, compression_type: str):
     """compresses the data using the specified compression type
 
     Args:
@@ -176,12 +176,14 @@ def compress(data, compression_type: str):
 
     Returns:
         bytes: the compressed bytes
+        str: the used compression type
     """
-
+    if compression_type not in ("gzip", "lzma"):
+        compression_type = "gzip"
     if compression_type == "gzip":
-        return gzip.compress(data)
+        return gzip.compress(data), compression_type
     elif compression_type == "lzma":
-        return lzma.compress(data)
+        return lzma.compress(data), compression_type
     else:
         raise ValueError("Unsupported compression type")
 
@@ -218,16 +220,14 @@ def make_inner_message(
     payload_type="text",
     part_number=1
     ):
+    compressed, used_mode = compress(payload.encode(),compression_type)
     inner_message = {
         "sent_time": int(time.time()),
         'uuid': str(uuid.uuid4()),
         "part_number": part_number, # part number of the message in case it comes in more then one part
-        "compression_type": compression_type,
+        "compression_type": used_mode,
         "payload_type": payload_type,
-        "message_bytes": base64.urlsafe_b64encode(
-            compress(payload.encode(),
-                     compression_type)
-            ).decode(),
+        "message_bytes": base64.urlsafe_b64encode(compressed).decode(),
         "type_of_key_or_message": "message"
     }
     Path(storage_path/"contacts"/contact_id/"messages"/'sent').mkdir(parents=True, exist_ok=True)
