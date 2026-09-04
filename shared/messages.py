@@ -248,7 +248,11 @@ def consume_otk(key_id, contact_id):
     })
 
 def first_message_send_init(contact_id, message, sender_id):
-    inner = make_inner_message(contact_id, message)
+    try:
+        compression_type = json.loads(Path(storage_path/"config.json").read_text(encoding='utf-8'))['messages']["compression"]
+    except (KeyError, FileNotFoundError, json.JSONDecodeError):
+        compression_type = 'gzip'
+    inner = make_inner_message(contact_id, message, compression_type=compression_type)
     _, identify_priv = make_keys.grab_identify_keys()
 
 
@@ -463,7 +467,11 @@ def decode_message(contact_id, outer_message):
     return payload, inner, ratchet_state
 
 def encode_message(contact_id, message, sender_id):
-    inner = make_inner_message(contact_id, message)
+    try:
+        compression_type = json.loads(Path(storage_path/"config.json").read_text(encoding='utf-8'))['messages']["compression"]
+    except (KeyError, FileNotFoundError, json.JSONDecodeError):
+        compression_type = 'gzip'
+    inner = make_inner_message(contact_id, message, compression_type=compression_type)
 
     contact_path = storage_path/"contacts"/contact_id
     ratchet_state = ratchet.load_ratchet(
