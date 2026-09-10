@@ -26,7 +26,7 @@ def connect_pinned(host, port, expected_fingerprint, timeout=5):
         if config.get('tor').get("only use tor for .onion", True) is False or host.endswith(".onion"):
             proxy = config.get('tor').get("proxy", "127.0.0.1:9050").split(":")
             raw_sock = socks.socksocket()
-            raw_sock.set_proxy(socks.SOCKS5, proxy[0], proxy[1])
+            raw_sock.set_proxy(socks.SOCKS5, proxy[0], int(proxy[1]))
         else:
             raw_sock = socket.socket()
     else:

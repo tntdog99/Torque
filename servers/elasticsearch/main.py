@@ -6,6 +6,7 @@ import os
 import socket
 import ssl
 from pathlib import Path
+import argparse
 
 import urllib3
 from cryptography import x509
@@ -24,8 +25,10 @@ urllib3.disable_warnings()
 
 
 
-
-
+cli_args_parser = argparse.ArgumentParser(description="server software for Torque")
+cli_args_parser.add_argument("-i", "--interface", type=str, default="0.0.0.0", help="the interface to bind to")
+cli_args_parser.add_argument("-p", "--port", type=int, default=8080, help="the port to bind to")
+args = cli_args_parser.parse_args()
 
 
 
@@ -145,8 +148,8 @@ db = Elasticsearch(
     ca_certs=os.environ["ELASTICSEARCH_CA_CERT"],
     verify_certs=True,
 )
-HOST = '0.0.0.0'
-PORT = 8080
+HOST = args.interface
+PORT = args.port
 
 
 

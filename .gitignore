@@ -5,6 +5,7 @@ client3/
 **.db
 **.key
 **.crt
+**.log
 .storage/
 
 
