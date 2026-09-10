@@ -1,8 +1,11 @@
 
 # Torque
-Torque is a end-to-end encrypted decentralized messaging platform
+Torque is a end-to-end encrypted decentralized messaging platform using the signal protocol
 
 feel free to contribute
+
+
+## details
 
 
 ## Using
