@@ -7,6 +7,9 @@ import sqlite3
 import ssl
 from pathlib import Path
 import argparse
+import threading
+from queue import Queue
+import time
 
 import urllib3
 from cryptography import x509
@@ -25,7 +28,126 @@ urllib3.disable_warnings()
 cli_args_parser = argparse.ArgumentParser(description="server software for Torque")
 cli_args_parser.add_argument("-i", "--interface", type=str, default="0.0.0.0", help="the interface to bind to")
 cli_args_parser.add_argument("-p", "--port", type=int, default=8080, help="the port to bind to")
+cli_args_parser.add_argument("-t", "--thread_count", type=int, default=1, help="the amount of threads to start for request handling ")
+cli_args_parser.add_argument("-n", "--timeout", type=int, default=3, help="the time the main thread will wait for a request to be parsed")
+
 args = cli_args_parser.parse_args()
+
+
+class worker_thread(threading.Thread):
+    def __init__(self, request_queue: Queue):
+        super().__init__()
+        self.sqlite_connection = None
+        self.request_queue = request_queue
+    def run(self):
+        # connect to the database
+        self.sqlite_connection = sqlite3.connect("wbms.db")
+        self.sqlite_connection.row_factory = sqlite3.Row
+        while True:
+            
+            database_request, connection = self.request_queue.get(block=True, timeout=None)
+            worker_cursor = self.sqlite_connection.cursor()
+            try:
+                if database_request.get('request') is True:
+                    # grabs the requested data (message or key) from the database
+                    if database_request.get('type_of_key_or_message') == 'otk':
+                        worker_cursor.execute(
+                            "SELECT id, document FROM wbms_database WHERE contact_id=? AND type_of_key_or_message=? LIMIT 1",
+                            (database_request['contact_id'],
+                            database_request['type_of_key_or_message']),
+                        )
+                        rows = worker_cursor.fetchall()
+                        hits = format_hits(rows)
+                        if len(hits) == 0:
+                            sent = []
+                        else:
+                            sent = [hits[0]]
+                            doc_id = hits[0]["_id"]
+                    elif database_request.get('type_of_key_or_message') == 'otk_invalidate':
+                        try:
+                            key_id = database_request['key_id']
+                            invalidate_signature = base64.urlsafe_b64decode(
+                                database_request['invalidate_signature']
+                                )
+
+                            worker_cursor.execute(
+                                """
+                                SELECT id, contact_id, document
+                                FROM wbms_database
+                                WHERE type_of_key_or_message = 'otk'
+                                AND key_id = ?
+                                LIMIT 1
+                                """,
+                                (database_request["key_id"],),
+                            )
+
+                            row = worker_cursor.fetchone()
+
+
+                            otk_document = json.loads(row["document"])
+                            otk_public_key = otk_document["makers_public_key"]
+
+                            otk_ident_pub = Ed25519PublicKey.from_public_bytes(
+                                base64.urlsafe_b64decode(otk_public_key)
+                                )
+                            otk_ident_pub.verify(invalidate_signature, key_id.encode())
+
+
+                            worker_cursor.execute(
+                                "DELETE FROM wbms_database WHERE id=?",
+                                (row["id"],),
+                            )
+                            self.sqlite_connection.commit()
+
+                        except Exception as e:
+                            logger.info('failed to invalidate OTK: %s', e)
+                        connection.sendall(b"invalidated")
+                        continue
+                    else:
+                        worker_cursor.execute(
+                            "SELECT id, document FROM wbms_database WHERE contact_id=? AND type_of_key_or_message=?",
+                            (database_request['contact_id'], database_request['type_of_key_or_message']),
+                        )
+                        rows = worker_cursor.fetchall()
+                        database_response = format_hits(rows)
+
+                        if len(database_response) == 0:
+                            sent = []
+                        else:
+                            sent = database_response
+                    connection.sendall(json.dumps(sent).encode('utf-8'))
+                    continue
+                else:
+                    # insert the document into the sqlite table
+                    try:
+                        if not verify_posted_key(database_request):
+                            logger.warning("Invalid signature for document: %s", database_request)
+
+                            connection.sendall(b"rejected")
+                            continue
+                        worker_cursor.execute(
+                            "INSERT INTO wbms_database (contact_id, type_of_key_or_message, key_id, document) VALUES (?,?,?,?)",
+                            (
+                                database_request.get('contact_id'),
+                                database_request.get('type_of_key_or_message'),
+                                database_request.get('key_id'),
+                                json.dumps(database_request),
+                            ),
+                        )
+                        self.sqlite_connection.commit()
+                    except Exception as e:
+                        logger.info("Failed to insert document: %s", e)
+                    connection.sendall(b"connected")
+                    continue
+            except (OSError, ssl.SSLError) as e:
+                logger.info("client disconnected before response: %s", e)
+            finally:
+                worker_cursor.close()
+                connection.close()
+
+
+
+
 
 
 def verify_posted_key(doc):
@@ -127,12 +249,12 @@ key_path = Path("wbms.key")
 cert_path = Path("wbms.crt")
 
 if not key_path.exists() or not cert_path.exists():
-    print("No cert found, generating new cert")
+    logger.warning("No cert found, generating new cert")
     cert = generate_cert("wbms", key_path, cert_path, 3650)
-    print(f"fingerprint: {get_fingerprint(cert)}")
 else:
     cert = x509.load_pem_x509_certificate(cert_path.read_bytes())
-    print(f"fingerprint: {get_fingerprint(cert)}")
+
+logger.info(f"fingerprint: {get_fingerprint(cert)}")
 
 context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
 context.load_cert_chain(certfile=str(cert_path), keyfile=str(key_path))
@@ -141,12 +263,12 @@ context.load_cert_chain(certfile=str(cert_path), keyfile=str(key_path))
 
 
 
-con = sqlite3.connect("wbms.db")
+setup_connection_sqlite = sqlite3.connect("wbms.db")
 
-con.row_factory = sqlite3.Row
-cur = con.cursor()
+setup_connection_sqlite.row_factory = sqlite3.Row
+cursor = setup_connection_sqlite.cursor()
 
-cur.execute(
+cursor.execute(
     """
     CREATE TABLE IF NOT EXISTS wbms_database (
         id INTEGER PRIMARY KEY,
@@ -157,11 +279,11 @@ cur.execute(
     )
     """
 )
-cur.execute("CREATE INDEX IF NOT EXISTS idx_key_id ON wbms_database(contact_id, key_id)")
-con.commit()
+cursor.execute("CREATE INDEX IF NOT EXISTS idx_key_id ON wbms_database(contact_id, key_id)")
+setup_connection_sqlite.commit()
+setup_connection_sqlite.close()
 HOST = args.interface
 PORT = args.port
-
 
 
 
@@ -176,140 +298,78 @@ def format_hits(rows):
     return hits
 
 
-def get_database_entry(id, type):
-    cur.execute(
-        "SELECT id, document FROM wbms_database WHERE contact_id=? AND type_of_key_or_message=?",
-        (id, type),
-    )
-    rows = cur.fetchall()
-    return format_hits(rows)
+
 
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
 
 server.bind((HOST, PORT))
 
+request_queue = Queue(maxsize=500)
 
+
+
+
+
+
+
+
+
+
+
+request_threads = []
+
+for _ in range(args.thread_count):
+    thread = worker_thread(request_queue=request_queue)
+    request_threads.append(thread)
+    thread.start()
+    
+    
+logger.info('started worker threads')
 server.listen()
 
-print(f"Server listening on {HOST}:{PORT}")
+
+
+
+
+logger.info("Server listening on %s:%s", HOST, PORT)
 while True:
     raw_conn, addr = server.accept()
     try:
         conn = context.wrap_socket(raw_conn, server_side=True)
     except ssl.SSLError as e:
-        print(f"TLS handshake failed: {e}")
+        logger.info(f"TLS handshake failed: {e}")
         raw_conn.close()
         continue
     conn.settimeout(5)
-    print("Connected")
-    with conn:
-        data = b""
-        while True:
-            chunk = conn.recv(11534336)
-            if not chunk:
+    logger.info("Connected")
+    handed_to_worker = False
+    data = b""
+    while True:
+        start_time = time.time()
+        chunk = conn.recv(11534336)
+        if not chunk:
+            break
+        # add the chunk to the json packet
+        data += chunk
+        if len(data) > 2**20: # 1 MB
+            logger.info('msg too large')
+            break
+        try:
+            database_request = json.loads(data.decode())
+            request_queue.put((database_request, conn), timeout=5)
+            handed_to_worker = True
+            break
+        except json.JSONDecodeError:
+            if time.time() - start_time > args.timeout:
                 break
-            # add the chunk to the json packet
-            data += chunk
-            if len(data) > 2**20: # 1 MB
-                print('msg too large')
+            # runs if the json packet is not fully received yet
+            logger.info("not done")
+            continue
+        except (KeyError,UnicodeDecodeError, TimeoutError):
+            if time.time() - start_time > args.timeout:
                 break
-            try:
-                database_request = json.loads(data.decode())
-                if database_request.get('request') is True:
-                    # grabs the requested data (message or key) from the database
-                    if database_request.get('type_of_key_or_message') == 'otk':
-                        cur.execute(
-                            "SELECT id, document FROM wbms_database WHERE contact_id=? AND type_of_key_or_message=? LIMIT 1",
-                            (database_request['contact_id'],
-                            database_request['type_of_key_or_message']),
-                        )
-                        rows = cur.fetchall()
-                        hits = format_hits(rows)
-                        if len(hits) == 0:
-                            sent = []
-                        else:
-                            sent = [hits[0]]
-                            doc_id = hits[0]["_id"]
-                    elif database_request.get('type_of_key_or_message') == 'otk_invalidate':
-                        try:
-                            key_id = database_request['key_id']
-                            invalidate_signature = base64.urlsafe_b64decode(
-                                database_request['invalidate_signature']
-                                )
-
-                            cur.execute(
-                                """
-                                SELECT id, contact_id, document
-                                FROM wbms_database
-                                WHERE type_of_key_or_message = 'otk'
-                                AND key_id = ?
-                                LIMIT 1
-                                """,
-                                (database_request["key_id"],),
-                            )
-
-                            row = cur.fetchone()
-
-
-                            otk_document = json.loads(row["document"])
-                            otk_public_key = otk_document["makers_public_key"]
-
-                            otk_ident_pub = Ed25519PublicKey.from_public_bytes(
-                                base64.urlsafe_b64decode(otk_public_key)
-                                )
-                            otk_ident_pub.verify(invalidate_signature, key_id.encode())
-
-
-                            cur.execute(
-                                "DELETE FROM wbms_database WHERE id=?",
-                                (row["id"],),
-                            )
-                            con.commit()
-                        except Exception as e:
-                            print(f'failed to invalidate OTK: {e}')
-                        conn.sendall(b"invalidated")
-                        break
-                    else:
-                        database_response = get_database_entry(
-                            database_request['contact_id'],
-                            database_request['type_of_key_or_message']
-                            )
-                        if len(database_response) == 0:
-                            sent = []
-                        else:
-                            sent = database_response
-                    conn.sendall(json.dumps(sent).encode('utf-8'))
-                    break
-                else:
-                    # insert the document into the sqlite table
-                    try:
-                        if not verify_posted_key(database_request):
-                            logger.warning("Invalid signature for document: %s", database_request)
-                            
-                            conn.sendall(b"rejected")
-                            break
-                        cur.execute(
-                            "INSERT INTO wbms_database (contact_id, type_of_key_or_message, key_id, document) VALUES (?,?,?,?)",
-                            (
-                                database_request.get('contact_id'),
-                                database_request.get('type_of_key_or_message'),
-                                database_request.get('key_id'),
-                                json.dumps(database_request),
-                            ),
-                        )
-                        con.commit()
-                    except Exception as e:
-                        print(f"Failed to insert document: {e}")
-                    conn.sendall(b"connected")
-                    break
-
-            except json.JSONDecodeError:
-                # runs if the json packet is not fully received yet
-                print("not done")
-                continue
-            except (KeyError,UnicodeDecodeError, TimeoutError):
-                print('malformed input')
-                break
-
-    print("disconnected")
+            logger.info('malformed input')
+            break
+    if not handed_to_worker:
+        conn.close()
