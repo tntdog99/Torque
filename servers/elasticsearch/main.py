@@ -7,6 +7,9 @@ import socket
 import ssl
 from pathlib import Path
 import argparse
+import threading
+from queue import Queue
+import time
 
 import urllib3
 from cryptography import x509
@@ -28,9 +31,127 @@ urllib3.disable_warnings()
 cli_args_parser = argparse.ArgumentParser(description="server software for Torque")
 cli_args_parser.add_argument("-i", "--interface", type=str, default="0.0.0.0", help="the interface to bind to")
 cli_args_parser.add_argument("-p", "--port", type=int, default=8080, help="the port to bind to")
+cli_args_parser.add_argument("-t", "--thread_count", type=int, default=1, help="the amount of threads to start for request handling ")
+cli_args_parser.add_argument("-n", "--timeout", type=int, default=3, help="the time the main thread will wait for a request to be parsed")
+
 args = cli_args_parser.parse_args()
 
+class worker_thread(threading.Thread):
+    def __init__(self, request_queue: Queue, elastic_search_db: Elasticsearch):
+        super().__init__()
+        self.request_queue = request_queue
+        self.elastic_search_db = elastic_search_db
+    def run(self):
+        # connect to the database
+        while True:
+            
+            database_request, connection = self.request_queue.get(block=True, timeout=None)
+            try:
 
+                if database_request.get('request') is True:
+                    # grabs the requested data (message or key) from the database
+                    if database_request.get('type_of_key_or_message') == 'otk':
+                        query = {
+                            "query": {
+                                "bool": {
+                                    "filter": [
+                                        {
+                                            "term": {
+                                                "type_of_key_or_message.keyword":
+                                                    database_request['type_of_key_or_message']
+                                            }
+                                        },
+                                        {
+                                            "term": {
+                                                "contact_id.keyword":
+                                                    database_request['contact_id']
+                                            }
+                                        },
+                                    ]
+                                }
+                            },
+                            "size": 1
+                        }
+                        response = self.elastic_search_db.search(index="wbms_database", body=query)
+                        hits = response["hits"]["hits"]
+                        if len(hits) == 0:
+                            sent = []
+                        else:
+                            sent = [hits[0]]
+                            doc_id = hits[0]["_id"]
+                    elif database_request.get('type_of_key_or_message') == 'otk_invalidate':
+                        try:
+                            key_id = database_request['key_id']
+                            invalidate_signature = base64.urlsafe_b64decode(
+                                database_request['invalidate_signature']
+                                )
+
+
+                            query = {
+                                "query": {
+                                    "bool": {
+                                        "filter": [
+                                            { "term": { "type_of_key_or_message.keyword": 'otk' } },
+                                            {
+                                                "term":{
+                                                    "contact_id.keyword":
+                                                        database_request["contact_id"]
+                                                    }
+                                            },
+                                            {"term":{ "key_id.keyword": database_request['key_id']}}
+                                        ]
+                                    }
+                                },
+                                "size": 1
+                            }
+                            response = self.elastic_search_db.search(index="wbms_database", body=query)
+                            hits = response["hits"]["hits"]
+                            doc = hits[0]
+                            doc_id = hits[0]["_id"]
+                            otk_ident_pub = Ed25519PublicKey.from_public_bytes(
+                                base64.urlsafe_b64decode(doc["_source"]["makers_public_key"])
+                                )
+                            otk_ident_pub.verify(invalidate_signature, key_id.encode())
+
+
+
+                            self.elastic_search_db.delete(index="wbms_database", id=doc_id)
+                        except Exception as e:
+                            logger.info('failed to invalidate OTK: %s', e)
+                        connection.sendall(b"invalidated")
+                        continue
+                    else:
+                        
+                        query = {
+                                "query": {
+                                    "bool": {
+                                        "filter": [
+                                                    { "term": { "type_of_key_or_message.keyword": database_request['type_of_key_or_message'] } },
+                                                    { "term": { "contact_id.keyword": database_request['contact_id'] } }
+                                                ]
+                                            }
+                                        }
+                                }
+                        response = self.elastic_search_db.search(index="wbms_database", body=query)
+                        database_response = response["hits"]["hits"]
+                        if len(database_response) == 0:
+                            sent = []
+                        else:
+                            sent = database_response
+                    connection.sendall(json.dumps(sent).encode('utf-8'))
+                    continue
+                else:
+                    if not verify_posted_key(database_request):
+                        connection.sendall(b"rejected")
+                        logger.warning("Invalid signature for document: %s", database_request)
+                        continue
+                    database_response = self.elastic_search_db.index(index="wbms_database", document=database_request)
+                    connection.sendall(b"connected")
+                    continue
+            except (OSError, ssl.SSLError) as e:
+                logger.info("client disconnected before response: %s", e)
+            finally:
+                connection.close()
 
 
 
@@ -123,12 +244,11 @@ key_path = Path("wbms.key")
 cert_path = Path("wbms.crt")
 
 if not key_path.exists() or not cert_path.exists():
-    print("No cert found, generating new cert")
+    logger.warning("No cert found, generating new cert")
     cert = generate_cert("wbms", key_path, cert_path, 3650)
-    print(f"fingerprint: {get_fingerprint(cert)}")
 else:
     cert = x509.load_pem_x509_certificate(cert_path.read_bytes())
-    print(f"fingerprint: {get_fingerprint(cert)}")
+logger.info("fingerprint: %s", get_fingerprint(cert))
 
 context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
 context.load_cert_chain(certfile=str(cert_path), keyfile=str(key_path))
@@ -138,14 +258,14 @@ context.load_cert_chain(certfile=str(cert_path), keyfile=str(key_path))
 
 
 
-
+ca_certs = os.environ.get("ELASTICSEARCH_CA_CERT", None)
 
 api_key = os.environ['API_KEY']
 
-db = Elasticsearch(
+elastic_search_db = Elasticsearch(
     os.environ["ELASTICSEARCH_URL"],
     api_key=os.environ["API_KEY"],
-    ca_certs=os.environ["ELASTICSEARCH_CA_CERT"],
+    ca_certs=ca_certs,
     verify_certs=True,
 )
 HOST = args.interface
@@ -154,150 +274,70 @@ PORT = args.port
 
 
 
-def get_database_entry(id, type):
-    query = {
-            "query": {
-                "bool": {
-                    "filter": [
-                                { "term": { "type_of_key_or_message.keyword": type } },
-                                { "term": { "contact_id.keyword": id } }
-                            ]
-                        }
-                    }
-            }
-    response = db.search(index="wbms_database", body=query)
-    return response["hits"]["hits"]
+
 
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
 
+
+
+
+
 server.bind((HOST, PORT))
 
+request_queue = Queue(maxsize=500)
+request_threads = []
 
+for _ in range(args.thread_count):
+    thread = worker_thread(request_queue=request_queue, elastic_search_db=elastic_search_db)
+    request_threads.append(thread)
+    thread.start()
+    
+    
+logger.info('started worker threads')
 server.listen()
 
-print(f"Server listening on {HOST}:{PORT}")
+logger.info("Server listening on %s:%s", HOST, PORT)
 while True:
     raw_conn, addr = server.accept()
     try:
         conn = context.wrap_socket(raw_conn, server_side=True)
     except ssl.SSLError as e:
-        print(f"TLS handshake failed: {e}")
+        logger.info("TLS handshake failed: %s", e)
         raw_conn.close()
         continue
     conn.settimeout(5)
-    print("Connected")
-    with conn:
-        data = b""
-        while True:
-            chunk = conn.recv(11534336)
-            if not chunk:
+    logger.info("Connected")
+    start_time = time.time()
+    handed_to_worker = False
+    data = b""
+    while True:
+        
+        chunk = conn.recv(11534336)
+        if not chunk:
+            break
+        # add the chunk to the json packet
+        data += chunk
+        if len(data) > 2**20: # 1 MB
+            logger.info('msg too large')
+            break
+        try:
+            database_request = json.loads(data.decode())
+            request_queue.put((database_request, conn), timeout=5)
+            handed_to_worker = True
+            break
+
+        except json.JSONDecodeError:
+            if time.time() - start_time > args.timeout:
                 break
-            # add the chunk to the json packet
-            data += chunk
-            if len(data) > 2**20: # 1 MB
-                print('msg too large')
+            # runs if the json packet is not fully received yet
+            logger.info("not done")
+            continue
+        except (KeyError,UnicodeDecodeError, TimeoutError):
+            if time.time() - start_time > args.timeout:
                 break
-            try:
-                database_request = json.loads(data.decode())
-                if database_request.get('request') is True:
-                    # grabs the requested data (message or key) from the database
-                    if database_request.get('type_of_key_or_message') == 'otk':
-                        query = {
-                            "query": {
-                                "bool": {
-                                    "filter": [
-                                        {
-                                            "term": {
-                                                "type_of_key_or_message.keyword":
-                                                    database_request['type_of_key_or_message']
-                                            }
-                                        },
-                                        {
-                                            "term": {
-                                                "contact_id.keyword":
-                                                    database_request['contact_id']
-                                            }
-                                        },
-                                    ]
-                                }
-                            },
-                            "size": 1
-                        }
-                        response = db.search(index="wbms_database", body=query)
-                        hits = response["hits"]["hits"]
-                        if len(hits) == 0:
-                            sent = []
-                        else:
-                            sent = [hits[0]]
-                            doc_id = hits[0]["_id"]
-                    elif database_request.get('type_of_key_or_message') == 'otk_invalidate':
-                        try:
-                            key_id = database_request['key_id']
-                            invalidate_signature = base64.urlsafe_b64decode(
-                                database_request['invalidate_signature']
-                                )
+            logger.info('malformed input')
+            break
 
-
-                            query = {
-                                "query": {
-                                    "bool": {
-                                        "filter": [
-                                            { "term": { "type_of_key_or_message.keyword": 'otk' } },
-                                            {
-                                                "term":{
-                                                    "contact_id.keyword":
-                                                        database_request["contact_id"]
-                                                    }
-                                            },
-                                            {"term":{ "key_id.keyword": database_request['key_id']}}
-                                        ]
-                                    }
-                                },
-                                "size": 1
-                            }
-                            response = db.search(index="wbms_database", body=query)
-                            hits = response["hits"]["hits"]
-                            doc = hits[0]
-                            doc_id = hits[0]["_id"]
-                            otk_ident_pub = Ed25519PublicKey.from_public_bytes(
-                                base64.urlsafe_b64decode(doc["_source"]["makers_public_key"])
-                                )
-                            otk_ident_pub.verify(invalidate_signature, key_id.encode())
-
-
-
-                            db.delete(index="wbms_database", id=doc_id)
-                        except Exception as e:
-                            print(f'failed to invalidate OTK: {e}')
-                        conn.sendall(b"invalidated")
-                        break
-                    else:
-                        database_response = get_database_entry(
-                            database_request['contact_id'],
-                            database_request['type_of_key_or_message']
-                            )
-                        if len(database_response) == 0:
-                            sent = []
-                        else:
-                            sent = database_response
-                    conn.sendall(json.dumps(sent).encode('utf-8'))
-                    break
-                else:
-                    if not verify_posted_key(database_request):
-                        conn.sendall(b"rejected")
-                        logger.warning("Invalid signature for document: %s", database_request)
-                        break
-                    database_response = db.index(index="wbms_database", document=database_request)
-                    conn.sendall(b"connected")
-                    break
-
-            except json.JSONDecodeError:
-                # runs if the json packet is not fully received yet
-                print("not done")
-                continue
-            except (KeyError,UnicodeDecodeError, TimeoutError):
-                print('malformed input')
-                break
-
-    print("disconnected")
+    if not handed_to_worker:
+        conn.close()

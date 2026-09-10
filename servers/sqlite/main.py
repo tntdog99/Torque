@@ -254,7 +254,7 @@ if not key_path.exists() or not cert_path.exists():
 else:
     cert = x509.load_pem_x509_certificate(cert_path.read_bytes())
 
-logger.info(f"fingerprint: {get_fingerprint(cert)}")
+logger.info("fingerprint: %s", get_fingerprint(cert))
 
 context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
 context.load_cert_chain(certfile=str(cert_path), keyfile=str(key_path))
@@ -307,16 +307,6 @@ server.bind((HOST, PORT))
 
 request_queue = Queue(maxsize=500)
 
-
-
-
-
-
-
-
-
-
-
 request_threads = []
 
 for _ in range(args.thread_count):
@@ -338,15 +328,15 @@ while True:
     try:
         conn = context.wrap_socket(raw_conn, server_side=True)
     except ssl.SSLError as e:
-        logger.info(f"TLS handshake failed: {e}")
+        logger.info("TLS handshake failed: %s", e)
         raw_conn.close()
         continue
     conn.settimeout(5)
     logger.info("Connected")
+    start_time = time.time()
     handed_to_worker = False
     data = b""
     while True:
-        start_time = time.time()
         chunk = conn.recv(11534336)
         if not chunk:
             break
