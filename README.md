@@ -29,7 +29,7 @@ to run the server simply run the main.py in the server directory that you would 
 
 
 put any servers you trust or want to run in the server list
-
+the ones here are for example only.
 ## license
 
 all softawre under the ./servers directory is licensed under AGPL any client side software is under GPL
