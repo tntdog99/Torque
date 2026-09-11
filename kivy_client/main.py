@@ -59,7 +59,7 @@ def new_keys(_):
     make_keys.make_otks(contact_id)
 
     for otk in otk_path.iterdir():
-        otk_data = Path(otk/"semi_pub.json").read_text(encoding='utf-8')
+        otk_data = make_keys.decrypt_secure_storage(Path(otk/"semi_pub.json").read_bytes(), 'str')
         otk_data = json.loads(otk_data)
         keys.send_to_all_servers(otk_data)
     clear()
@@ -71,8 +71,10 @@ def grab_contacts() -> list[dict]:
 
     contacts_registry_path = Path(storage_path/"contact_registry.json")
     if not contacts_registry_path.exists():
-        contacts_registry_path.write_text('[]')
-    contacts_registry_text = contacts_registry_path.read_text(encoding='utf-8')
+        contacts_registry_path.write_bytes(make_keys.encrypt_secure_storage('[]'))
+    contacts_registry_text = make_keys.decrypt_secure_storage(
+        contacts_registry_path.read_bytes(), expected_output_type='str'
+    )
     contacts_registry_json = json.loads(contacts_registry_text)
     return contacts_registry_json
 
@@ -107,7 +109,7 @@ def grab_message_log(my_contact_id, contact_id):
     msg_path_sent.mkdir(parents=True, exist_ok=True)
     our_messages = []
     for file in msg_path_sent.iterdir():
-        message = json.loads(file.read_text(encoding='utf-8'))
+        message = json.loads(make_keys.decrypt_secure_storage(file.read_bytes(), 'str'))
         message['side'] = 'right'
         our_messages.append(message)
 
@@ -125,12 +127,12 @@ def grab_message_log(my_contact_id, contact_id):
         header_obj = json.loads(raw["header"])
         check_msg_path = Path(msg_path_recv/f'{header_obj["uuid"]}.json')
         if  check_msg_path.exists():
-            inner = json.loads(check_msg_path.read_text(encoding='utf-8'))
+            inner = json.loads(make_keys.decrypt_secure_storage(check_msg_path.read_bytes(), 'str'))
         else:
             _, inner, _ = messages.decode_message(contact_id, raw)
             if inner is None:
                 continue
-            check_msg_path.write_text(json.dumps(inner))
+            check_msg_path.write_bytes(make_keys.encrypt_secure_storage(json.dumps(inner)))
         inner['side'] = 'left'
         their_messages.append(inner)
 
@@ -338,7 +340,9 @@ class chat_popup(BoxLayout):
         for contact in contacts:
             if contact['contact_id'] != self.contact_bundle['contact_id']:
                 new_contacts.append(self.contact_bundle)
-        Path(storage_path/"contact_registry.json").write_text(json.dumps(new_contacts))
+        Path(storage_path/"contact_registry.json").write_bytes(
+            make_keys.encrypt_secure_storage(json.dumps(new_contacts))
+        )
 
 
         self.popup.dismiss()
@@ -429,7 +433,9 @@ class choose_contact_popup(BoxLayout):
             return
         new_contact = {"chat_name": chat_name, "contact_id": contact_id}
         contacts.append(new_contact)
-        Path(storage_path/"contact_registry.json").write_text(json.dumps(contacts))
+        Path(storage_path/"contact_registry.json").write_bytes(
+            make_keys.encrypt_secure_storage(json.dumps(contacts))
+        )
 
         message, _ = messages.first_message_send_init(
             contact_id, "first message",
@@ -449,7 +455,9 @@ class choose_contact_popup(BoxLayout):
             return
         new_contact = {"chat_name": chat_name, "contact_id": contact_id}
         contacts.append(new_contact)
-        Path(storage_path/"contact_registry.json").write_text(json.dumps(contacts), encoding="utf-8")
+        Path(storage_path/"contact_registry.json").write_bytes(
+            make_keys.encrypt_secure_storage(json.dumps(contacts))
+        )
 
         raw = keys.grab_type_from_server(base64.urlsafe_b64encode(pubkey_bytes).decode(), "message")
         if raw is None or len(raw) == 0:
@@ -483,7 +491,7 @@ class choose_contact_popup(BoxLayout):
         recv_path = Path(storage_path/"contacts"/contact_id/"messages"/"recv")
         recv_path.mkdir(parents=True, exist_ok=True)
         header_obj = json.loads(raw["header"])
-        Path(recv_path/f'{header_obj["uuid"]}.json').write_text(json.dumps(inner), encoding="utf-8")
+        Path(recv_path/f'{header_obj["uuid"]}.json').write_bytes(make_keys.encrypt_secure_storage(json.dumps(inner)))
         print(message)
 
         if self.form_popup:

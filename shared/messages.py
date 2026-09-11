@@ -234,7 +234,7 @@ def make_inner_message(
     msg_path = Path(
         storage_path/"contacts"/contact_id/"messages"/'sent'/f"{int(time.time())!s}{uuid.uuid4()!s}.json"
         )
-    msg_path.write_text(json.dumps(inner_message), encoding='utf-8')
+    msg_path.write_bytes(make_keys.encrypt_secure_storage(json.dumps(inner_message)))
     return inner_message
 
 def consume_otk(key_id, contact_id):
@@ -329,7 +329,7 @@ def first_message_recv_init(contact_id, msg, my_contact_id):
     except ValueError:
         logger.error("Invalid contact_id format for contact %s", contact_id)
         return None, None
-    prekey_priv = Path(contact_path/"semi_priv.bin").read_bytes()
+    prekey_priv = make_keys.decrypt_secure_storage(Path(contact_path/"semi_priv.bin").read_bytes(), expected_output_type='bytes')
     prekey_priv = X25519PrivateKey.from_private_bytes(prekey_priv)
 
 
@@ -373,8 +373,8 @@ def first_message_recv_init(contact_id, msg, my_contact_id):
     lte_other_pub = make_x25519_pub(msg['lte'])
     throw_pub = make_x25519_pub(msg["throw_pub"])
 
-    prekey_path = contact_path/"semi_pub.json"
-    prekey_bundle = json.loads(prekey_path.read_text(encoding='utf-8'))
+    prekey_path = Path(contact_path/"semi_pub.json")
+    prekey_bundle = json.loads(make_keys.decrypt_secure_storage(prekey_path.read_bytes(), 'str'))
 
 
     prekey_pub = make_x25519_pub(prekey_bundle["public_key"])
@@ -383,7 +383,7 @@ def first_message_recv_init(contact_id, msg, my_contact_id):
     otk_path = make_keys.sanitize_path(contact_path/"otks", str(otk_id))
     if otk_path is None:
         return None, None
-    otk_priv = X25519PrivateKey.from_private_bytes(Path(otk_path/"priv.bin").read_bytes())
+    otk_priv = X25519PrivateKey.from_private_bytes(make_keys.decrypt_secure_storage(Path(otk_path/"priv.bin").read_bytes(),expected_output_type='bytes'))
     new_key = X3DH_recv(prekey_priv, lte_priv, otk_priv, lte_other_pub, throw_pub)
 
 
@@ -448,7 +448,7 @@ def decode_message(contact_id, outer_message):
 
     contact_path = storage_path/"contacts"/contact_id
     ratchet_state = ratchet.load_ratchet(
-        json.loads((contact_path/"ratchet_state.json").read_text(encoding='utf-8'))
+        json.loads(make_keys.decrypt_secure_storage(Path(contact_path/"ratchet_state.json").read_bytes(),'str'))
         )
 
 
@@ -475,7 +475,7 @@ def encode_message(contact_id, message, sender_id):
 
     contact_path = storage_path/"contacts"/contact_id
     ratchet_state = ratchet.load_ratchet(
-        json.loads((contact_path/"ratchet_state.json").read_text(encoding='utf-8'))
+        json.loads(make_keys.decrypt_secure_storage(Path(contact_path/"ratchet_state.json").read_bytes(), 'str'))
         )
 
     logger.debug("Encoding regular message for contact %s", contact_id)

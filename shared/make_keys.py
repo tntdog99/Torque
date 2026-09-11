@@ -4,16 +4,22 @@ import logging
 import os
 import time
 from pathlib import Path
+import keyring
+import sys
+import binascii
+from typing import Literal, overload
+
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519, x25519
+from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
 
 logging.basicConfig(filename='wbms_client.log', level=logging.DEBUG,
                      format='%(asctime)s %(message)s')
 
 storage_path = Path(__file__).resolve().parent / ".storage"
 def read_long_term_key_bundle():
-    bundle = Path(storage_path / "pub_bundle.json").read_text(encoding='utf-8')
+    bundle = decrypt_secure_storage(Path(storage_path / "pub_bundle.json").read_bytes(), 'str')
     bundle = json.loads(bundle)
     return bundle
 
@@ -38,12 +44,15 @@ def make_prekey(contact_id):
 
     # saves the prekey private key to disk, this is used later when we need to do the x3dh recv
     Path(contact_path/"semi_priv.bin").write_bytes(
-        private_key.private_bytes(
+        encrypt_secure_storage(
+            private_key.private_bytes(
             encoding=serialization.Encoding.Raw,
             format=serialization.PrivateFormat.Raw,
             encryption_algorithm=serialization.NoEncryption()
             )
         )
+        
+    )
 
     # time stamp of when the key was made
     timestamp = int(time.time())
@@ -63,7 +72,7 @@ def make_prekey(contact_id):
     "long_term_encryption_pub_sig": read_long_term_key_bundle()["long_term_encryption_pub_sig"], # the signature of the long term encrypt key with the identify key, this is used to prove ownership of the long term encrypt key
     }
 
-    Path(contact_path/"semi_pub.json").write_text(json.dumps(data)) # saves the prekey public key and signature to disk, this is used later when we need to do the x3dh send
+    Path(contact_path/"semi_pub.json").write_bytes(encrypt_secure_storage(json.dumps(data))) # saves the prekey public key and signature to disk, this is used later when we need to do the x3dh send
     return data
 
 def make_otks(contact_id):
@@ -90,12 +99,14 @@ def make_otks(contact_id):
         otk_dir.mkdir(parents=True, exist_ok=True)
         # saves the otk private key to disk, this is used later when we need to do the x3dh recv
         Path(otk_dir/"priv.bin").write_bytes(
-            private_key.private_bytes(
-                encoding=serialization.Encoding.Raw,
-                format=serialization.PrivateFormat.Raw,
-                encryption_algorithm=serialization.NoEncryption()
+            encrypt_secure_storage(
+                private_key.private_bytes(
+                    encoding=serialization.Encoding.Raw,
+                    format=serialization.PrivateFormat.Raw,
+                    encryption_algorithm=serialization.NoEncryption()
                 )
             )
+        )
         timestamp = int(time.time())
 
         pub_identify_key, priv_identify_key = grab_identify_keys()
@@ -117,7 +128,7 @@ def make_otks(contact_id):
         "request": False # post request
         }
         # saves the otk public key to disk, this is used later when we need to do the x3dh send
-        Path(otk_dir/"semi_pub.json").write_text(json.dumps(data))
+        Path(otk_dir/"semi_pub.json").write_bytes(encrypt_secure_storage(json.dumps(data)))
 
 
 # makes a single otk
@@ -154,30 +165,36 @@ def make_starting_keys():
     long_term_encryption_pub_sig = identify_priv.sign(encrypt_pub_bytes)
 
     (storage_path / "ident_privkey.bin").write_bytes(
+        encrypt_secure_storage(
         identify_priv.private_bytes(
             serialization.Encoding.DER,
             serialization.PrivateFormat.PKCS8,
             serialization.NoEncryption()
             )
+        )
     )
     (storage_path / "ident_pubkey.bin").write_bytes(
+        encrypt_secure_storage(
         identify_pub.public_bytes(
             serialization.Encoding.DER,
             serialization.PublicFormat.SubjectPublicKeyInfo
             )
+        )
     )
     (storage_path / "encrypt_privkey.bin").write_bytes(
+        encrypt_secure_storage(
         encryption_priv.private_bytes(
             serialization.Encoding.Raw,
             serialization.PrivateFormat.Raw,
             serialization.NoEncryption()
             )
+        )
     )
     json_pub = {
         "encrypt_pub": base64.urlsafe_b64encode(encrypt_pub_bytes).decode(),
         "long_term_encryption_pub_sig": base64.urlsafe_b64encode(long_term_encryption_pub_sig).decode(), # the signature of the long term encrypt key with the identify key, this is used to prove ownership of the long term encrypt key
     }
-    (storage_path / "pub_bundle.json").write_text(json.dumps(json_pub))
+    (storage_path / "pub_bundle.json").write_bytes(encrypt_secure_storage(json.dumps(json_pub)))
 
 # returns the long term identify keys, this is used to sign the prekeys and otks to prove ownership of the keys
 def grab_identify_keys():
@@ -188,11 +205,11 @@ def grab_identify_keys():
     priv_path = storage_path / "ident_privkey.bin"
     pub_path = storage_path / "ident_pubkey.bin"
     private_key = serialization.load_der_private_key(
-        priv_path.read_bytes(),
+        decrypt_secure_storage(priv_path.read_bytes(),expected_output_type='bytes'),
         password=None
     )
     public_key = serialization.load_der_public_key(
-        pub_path.read_bytes()
+        decrypt_secure_storage(pub_path.read_bytes(),expected_output_type='bytes'),
     )
     return public_key, private_key
 
@@ -202,7 +219,7 @@ def grab_long_term_encrypttion_keys():
     returns the long term encryption keys
     """
     priv_path = storage_path / "encrypt_privkey.bin"
-    private_key = x25519.X25519PrivateKey.from_private_bytes(priv_path.read_bytes())
+    private_key = x25519.X25519PrivateKey.from_private_bytes(decrypt_secure_storage(priv_path.read_bytes(), expected_output_type="bytes"))
     public_key = x25519.X25519PublicKey.from_public_bytes(
         base64.urlsafe_b64decode(read_long_term_key_bundle()["encrypt_pub"]))
 
@@ -215,3 +232,96 @@ def sanitize_path(base_dir, input):
         return None
 
     return target
+
+
+def warn_insecure_keyring():
+    print("ERROR POTENTIALLY INSECURE KEYRING!")
+    print("install a secure keyring or allow insecure keyring in the settings")
+    print("this is not recomended because any program or person with accsess to your computer can read anything you send or receive")
+    print("only set this to true if you know what you are doing")
+    sys.exit()
+
+
+def check_keyring_secure():
+    secure_keyring_modules = {
+        "keyring.backends.Windows",
+        "keyring.backends.macOS",
+        "keyring.backends.SecretService",
+        "keyring.backends.kwallet",
+    }
+    keyring_module = keyring.get_keyring().__class__.__module__
+    if keyring_module not in secure_keyring_modules:
+        try:
+            insecure_keyring = json.loads(Path(storage_path/"config.json").read_text(encoding='utf-8'))['storage']['"allow insecure keyring"']
+            if insecure_keyring == False:
+                warn_insecure_keyring()
+        except (FileNotFoundError, json.JSONDecodeError):
+            warn_insecure_keyring()
+
+@overload
+def decrypt_secure_storage(
+    data: bytes,
+    expected_output_type: Literal["bytes"] = "bytes",
+) -> bytes: ...
+
+
+@overload
+def decrypt_secure_storage(
+    data: bytes,
+    expected_output_type: Literal["str"],
+) -> str: ...
+
+
+
+
+def decrypt_secure_storage(
+    data: bytes,
+    expected_output_type: Literal["bytes", "str"] = "bytes",
+) -> bytes | str:
+    
+    check_keyring_secure()
+    key_temp = keyring.get_password("torque", 'main')
+    chacha_key = None
+    try:
+        if key_temp is not None:
+            chacha_key = base64.urlsafe_b64decode(key_temp)
+    except binascii.Error:
+        logging.error("invalid key in keystore")
+    if chacha_key is None:
+        chacha_key = ChaCha20Poly1305.generate_key()
+        keyring.set_password("torque", 'main', base64.urlsafe_b64encode(chacha_key).decode('utf-8'))
+
+
+    chacha_obj = ChaCha20Poly1305(chacha_key)
+    nonce = data[-12:]
+    ciphertext = data[:-12]
+    decrypted = chacha_obj.decrypt(nonce=nonce, data=ciphertext, associated_data=None)
+    if expected_output_type == 'str':
+        return decrypted.decode('utf-8')
+    return decrypted
+
+def encrypt_secure_storage(data):
+    check_keyring_secure()
+    key_temp = keyring.get_password("torque", 'main')
+    chacha_key = None
+    try:
+        if key_temp is not None:
+            chacha_key = base64.urlsafe_b64decode(key_temp)
+    except binascii.Error:
+        logging.error("invalid key in keystore! exiting!")
+        sys.exit()
+    if chacha_key is None:
+        chacha_key = ChaCha20Poly1305.generate_key()
+        keyring.set_password("torque", 'main', base64.urlsafe_b64encode(chacha_key).decode('utf-8'))
+        
+        
+
+    chacha_obj = ChaCha20Poly1305(chacha_key)
+    # convert data into a common type
+    data_type = type(data)
+    if data_type == str:
+        byte_data = data.encode('utf-8')
+    else:
+        byte_data = data
+    nonce = os.urandom(12)
+    return chacha_obj.encrypt(nonce=nonce, data=byte_data, associated_data=None)+nonce

@@ -70,10 +70,9 @@ class ratchet_state_obj:
         self.last_chain_length = last_chain_length
         self.skipped_message_keys = skipped_message_keys
     def save(self, contact_id):
-        path = storage_path/"contacts"/contact_id/"ratchet_state.json"
+        path = Path(storage_path/"contacts"/contact_id/"ratchet_state.json")
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w", encoding='utf-8') as f:
-            json.dump(self.export(), f)
+        path.write_bytes(make_keys.encrypt_secure_storage(json.dumps(self.export())))
         logger.debug("Saved ratchet state for contact %s", contact_id)
     def export(self):
         return {

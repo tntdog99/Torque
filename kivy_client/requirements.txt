@@ -1,3 +1,4 @@
 cryptography
 kivy
 pgpy
+keyring

@@ -42,8 +42,10 @@ def grab_contacts() -> list[dict]:
     """returns the contacts registry"""
     contacts_registry_path = Path(storage_path/"contact_registry.json")
     if not contacts_registry_path.exists():
-        contacts_registry_path.write_text('[]', encoding='utf-8')
-    contacts_registry_text = contacts_registry_path.read_text(encoding='utf-8')
+        contacts_registry_path.write_bytes(make_keys.encrypt_secure_storage('[]'))
+    contacts_registry_text = make_keys.decrypt_secure_storage(
+        contacts_registry_path.read_bytes(), expected_output_type='str'
+    )
     contacts_registry_json = json.loads(contacts_registry_text)
     return contacts_registry_json
 
@@ -53,8 +55,10 @@ def grab_blocked_contacts() -> list[str]:
     """returns the blocked contacts registry"""
     blocked_contact_ids_registry_path = Path(storage_path/"blocked_contact_ids.json")
     if not blocked_contact_ids_registry_path.exists():
-        blocked_contact_ids_registry_path.write_text('[]', encoding='utf-8')
-    blocked_contact_ids_registry_text = blocked_contact_ids_registry_path.read_text(encoding='utf-8')
+        blocked_contact_ids_registry_path.write_bytes(make_keys.encrypt_secure_storage('[]'))
+    blocked_contact_ids_registry_text = make_keys.decrypt_secure_storage(
+        blocked_contact_ids_registry_path.read_bytes(), expected_output_type='str'
+    )
     blocked_contact_ids_registry_json = json.loads(blocked_contact_ids_registry_text)
     return blocked_contact_ids_registry_json
 
@@ -120,7 +124,7 @@ def grab_message_log(my_contact_id, contact_id):
     msg_path_sent.mkdir(parents=True, exist_ok=True)
     our_messages = []
     for file in msg_path_sent.iterdir():
-        message = json.loads(file.read_text(encoding='utf-8'))
+        message = json.loads(make_keys.decrypt_secure_storage(file.read_bytes(), 'str'))
         message['side'] = 'right'
         our_messages.append(message)
 
@@ -147,13 +151,13 @@ def grab_message_log(my_contact_id, contact_id):
             continue
         check_msg_path = Path(msg_path_recv/f'{header_obj['uuid']}.json')
         if  check_msg_path.exists():
-            inner = json.loads(check_msg_path.read_text(encoding='utf-8'))
+            inner = json.loads(make_keys.decrypt_secure_storage(check_msg_path.read_bytes(), 'str'))
         else:
             _, inner, _ = messages.decode_message(contact_id, raw)
             if inner is None:
                 logger.warning('inner message is empty')
                 continue
-            check_msg_path.write_text(json.dumps(inner), encoding="utf-8")
+            check_msg_path.write_bytes(make_keys.encrypt_secure_storage(json.dumps(inner)))
         inner['side'] = 'left'
         their_messages.append(inner)
 
@@ -338,7 +342,9 @@ def details_screen(contact_bundle, my_contact_id):
         for contact in contacts:
             if contact['contact_id'] != contact_bundle['contact_id']:
                 new_contacts.append(contact)
-        Path(storage_path/"contact_registry.json").write_text(json.dumps(new_contacts), encoding="utf-8")
+        Path(storage_path/"contact_registry.json").write_bytes(
+            make_keys.encrypt_secure_storage(json.dumps(new_contacts))
+        )
     if option == 'edit':
         contacts = grab_contacts()
         new_contacts = []
@@ -354,18 +360,24 @@ def details_screen(contact_bundle, my_contact_id):
                     raise KeyboardInterrupt
                 contact_bundle['chat_name'] = new_name
                 new_contacts.append(contact_bundle)
-        Path(storage_path/"contact_registry.json").write_text(json.dumps(new_contacts), encoding="utf-8")
+        Path(storage_path/"contact_registry.json").write_bytes(
+            make_keys.encrypt_secure_storage(json.dumps(new_contacts))
+        )
     if option == 'block':
         contacts = grab_contacts()
         new_contacts = []
         for contact in contacts:
             if contact['contact_id'] != contact_bundle['contact_id']:
                 new_contacts.append(contact)
-        Path(storage_path/"contact_registry.json").write_text(json.dumps(new_contacts), encoding="utf-8")
+        Path(storage_path/"contact_registry.json").write_bytes(
+            make_keys.encrypt_secure_storage(json.dumps(new_contacts))
+        )
 
         blocked_contact_ids = grab_blocked_contacts()
         blocked_contact_ids.append(contact_bundle['contact_id'])
-        Path(storage_path/"blocked_contact_ids.json").write_text(json.dumps(blocked_contact_ids), encoding="utf-8")
+        Path(storage_path/"blocked_contact_ids.json").write_bytes(
+            make_keys.encrypt_secure_storage(json.dumps(blocked_contact_ids))
+        )
 if not check_if_starting_keys_exist():
     make_keys.make_starting_keys()
 
@@ -394,7 +406,9 @@ def choose_contact():
             contacts_backup = contacts.copy()
             new_contact = {"chat_name": contact_id, "contact_id": contact_id}
             contacts.append(new_contact)
-            Path(storage_path/"contact_registry.json").write_text(json.dumps(contacts), encoding="utf-8")
+            Path(storage_path/"contact_registry.json").write_bytes(
+                make_keys.encrypt_secure_storage(json.dumps(contacts))
+            )
             try: 
                 message, _ = messages.first_message_send_init(
                     contact_id,
@@ -403,7 +417,9 @@ def choose_contact():
                     )
             except messages.NoKeyFound:
                 print("Could not find the contact's public key. Make sure you have the correct contact id.")
-                Path(storage_path/"contact_registry.json").write_text(json.dumps(contacts_backup), encoding="utf-8")
+                Path(storage_path/"contact_registry.json").write_bytes(
+                    make_keys.encrypt_secure_storage(json.dumps(contacts_backup))
+                )
                 time.sleep(2)
                 
                 
@@ -480,10 +496,12 @@ def choose_contact():
                 message = messages.decompress(payload_bytes, inner["compression_type"]).decode()
                 recv_path = Path(storage_path/"contacts"/contact_id/"messages"/"recv")
                 recv_path.mkdir(parents=True, exist_ok=True)
-                Path(recv_path/f'{header_obj["uuid"]}.json').write_text(json.dumps(inner), encoding="utf-8")
+                Path(recv_path/f'{header_obj["uuid"]}.json').write_bytes(make_keys.encrypt_secure_storage(json.dumps(inner)))
 
                 print(message)
-            Path(storage_path/"contact_registry.json").write_text(json.dumps(contacts), encoding="utf-8")
+            Path(storage_path/"contact_registry.json").write_bytes(
+                make_keys.encrypt_secure_storage(json.dumps(contacts))
+            )
 
             return 'refresh'
         return contact_choice
@@ -604,7 +622,7 @@ def home(default_choice=None):
         make_keys.make_otks(contact_id)
 
         for otk in otk_path.iterdir():
-            otk_data = Path(otk/"semi_pub.json").read_text(encoding='utf-8')
+            otk_data = make_keys.decrypt_secure_storage(Path(otk/"semi_pub.json").read_bytes(), 'str')
             otk_data = json.loads(otk_data)
             keys.send_to_all_servers(otk_data)
     if menu_choice == 'config':
