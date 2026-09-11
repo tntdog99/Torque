@@ -7,8 +7,13 @@ feel free to contribute
 
 ## details
 
-torque uses:
+encryption and key exchange:
 X3DH with double ratchet
+
+decentralized:
+every client sends any data it wants to all of the servers.
+no one soley controls any server.
+every server is run by other people.
 
 ## Using
 
@@ -23,7 +28,7 @@ simply navigate into the directory and run main.py to start the client
 to run the server simply run the main.py in the server directory that you would like to run
 
 
-
+put any servers you trust or want to run in the server list
 
 ## license
 
