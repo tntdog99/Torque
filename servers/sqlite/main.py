@@ -18,7 +18,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from cryptography.x509.oid import NameOID
-logging.basicConfig(filename='wbms_server.log', level=logging.DEBUG,
+logging.basicConfig(filename='wbms_server.log', level=logging.ERROR,
                      format='%(asctime)s %(message)s')
 logger = logging.getLogger(__name__)
 

@@ -9,7 +9,7 @@ from pathlib import Path
 import socks
 config_path = Path(__file__).resolve().parent / ".storage" / "config.json"
 # handles most of the networking for talking to the servers
-logging.basicConfig(filename='wbms_client.log', level=logging.DEBUG,
+logging.basicConfig(filename='wbms_client.log', level=logging.ERROR,
                      format='%(asctime)s %(message)s')
 logger = logging.getLogger(__name__)
 

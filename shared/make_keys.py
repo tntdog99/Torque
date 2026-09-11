@@ -14,7 +14,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519, x25519
 from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
 
-logging.basicConfig(filename='wbms_client.log', level=logging.DEBUG,
+logging.basicConfig(filename='wbms_client.log', level=logging.ERROR,
                      format='%(asctime)s %(message)s')
 
 storage_path = Path(__file__).resolve().parent / ".storage"

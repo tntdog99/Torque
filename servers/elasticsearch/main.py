@@ -21,7 +21,7 @@ from cryptography.x509.oid import NameOID
 from elasticsearch import Elasticsearch
 
 
-logging.basicConfig(filename='wbms_server.log', level=logging.DEBUG,
+logging.basicConfig(filename='wbms_server.log', level=logging.ERROR,
                      format='%(asctime)s %(message)s')
 logger = logging.getLogger(__name__)
 urllib3.disable_warnings()

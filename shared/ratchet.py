@@ -18,7 +18,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.hashes import SHA256
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
-logging.basicConfig(filename='wbms_client.log', level=logging.DEBUG,
+logging.basicConfig(filename='wbms_client.log', level=logging.ERROR,
                      format='%(asctime)s %(message)s')
 logger = logging.getLogger(__name__)
 

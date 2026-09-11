@@ -59,7 +59,7 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 storage_path = Path(__file__).resolve().parent / ".storage"
 
-logging.basicConfig(filename='wbms_client.log', level=logging.DEBUG,
+logging.basicConfig(filename='wbms_client.log', level=logging.ERROR,
                      format='%(asctime)s %(message)s')
 logger = logging.getLogger(__name__)
 

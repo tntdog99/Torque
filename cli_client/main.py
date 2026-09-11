@@ -19,7 +19,7 @@ from prompt_toolkit.application import get_app
 from prompt_toolkit.shortcuts import choice, input_dialog
 from rich import print as rprint
 
-logging.basicConfig(filename='wbms_client.log', level=logging.DEBUG,
+logging.basicConfig(filename='wbms_client.log', level=logging.ERROR,
                      format='%(asctime)s %(message)s')
 logger = logging.getLogger(__name__)
 storage_path = Path(__file__).resolve().parent / ".storage"
