@@ -28,7 +28,7 @@ simply navigate into the directory and run main.py to start the client
 to run the server simply run the main.py in the server directory that you would like to run
 
 
-put any servers you trust or want to run in the server list
+put any servers you want to run in the server list
 the ones here are for example only.
 ## license
 
