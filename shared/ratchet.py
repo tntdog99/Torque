@@ -294,7 +294,13 @@ def ratchet_decrypt(ratchet_state, outer_message):
         msg = json.loads(outer_message)
     else:
         msg = outer_message
-
+    aad = {
+    "contact_id": msg["contact_id"],
+    "sender_id": msg["sender_id"],
+    "timestamp": msg["timestamp"],
+    "uuid": msg["uuid"],
+    "ratchet_header": msg['ratchet_header']
+    }
     header = msg['ratchet_header']
     logger.debug("Ratchet decrypt started for incoming message number %s", header['message_number'])
     encrypted_payload = base64.urlsafe_b64decode(msg["encrypted_payload"])
@@ -306,13 +312,6 @@ def ratchet_decrypt(ratchet_state, outer_message):
         f"{incoming_ratchet_pub}:{header['message_number']}"
         )
     if skipped_key:
-        aad = {
-        "contact_id": msg["contact_id"],
-        "sender_id": msg["sender_id"],
-        "timestamp": msg["timestamp"],
-        "uuid": msg["uuid"],
-        "ratchet_header": msg['ratchet_header']
-        }
         logger.debug("Using skipped key for retained message %s", header['message_number'])
         del ratchet_state.skipped_message_keys[f"{incoming_ratchet_pub}:{header['message_number']}"]
         header_check = json.dumps(aad, separators=(',', ':'), sort_keys=True)
@@ -329,11 +328,11 @@ def ratchet_decrypt(ratchet_state, outer_message):
     if incoming_ratchet_pub is not None and incoming_ratchet_pub != current_contact_pub:
         logger.debug("Performing DH ratchet for new remote ratchet pub")
         if header['last_chain_length'] > 1000:
-                logger.warning(
-                    "Incoming last_chain_length %s exceeds safety threshold",
-                    header['last_chain_length']
-                    )
-                return None
+            logger.warning(
+                "Incoming last_chain_length %s exceeds safety threshold",
+                header['last_chain_length']
+                )
+            return None
         for i in range(ratchet_state.recv_msg_number, header['last_chain_length']):
             msg_key, next_chain_key = kdf_chain(ratchet_state.recv_chain_key)
             ratchet_state.skipped_message_keys[f"{current_contact_pub}:{i}"] = msg_key
@@ -386,13 +385,6 @@ def ratchet_decrypt(ratchet_state, outer_message):
         header['message_number'],
         ratchet_state.recv_msg_number
         )
-    aad = {
-    "contact_id": msg["contact_id"],
-    "sender_id": msg["sender_id"],
-    "timestamp": msg["timestamp"],
-    "uuid": msg["uuid"],
-    "ratchet_header": msg['ratchet_header']
-    }
     header_check = json.dumps(aad, separators=(',', ':'), sort_keys=True)
     return AESGCM(msg_key).decrypt(nonce, encrypted_payload,  header_check.encode("utf-8"))
 
