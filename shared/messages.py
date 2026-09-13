@@ -450,6 +450,7 @@ def first_message_recv_init(contact_id, msg, my_contact_id):
 def decode_message(contact_id, outer_message):
 
     contact_path = storage_path/"contacts"/contact_id
+    # load the ratchet state from disk into memmory
     ratchet_state = ratchet.load_ratchet(
         json.loads(make_keys.decrypt_secure_storage(Path(contact_path/"ratchet_state.json").read_bytes(),'str'))
         )
@@ -463,6 +464,7 @@ def decode_message(contact_id, outer_message):
         return None, None, None
     if decrypted is None:
         return None, None, None
+    # if decryption fails the changes dont get written to disk
     ratchet_state.save(contact_id)
     inner = json.loads(decrypted.decode())
     payload_bytes = base64.urlsafe_b64decode(inner["message_bytes"])
