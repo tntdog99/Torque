@@ -124,8 +124,7 @@ def grab_message_log(my_contact_id, contact_id):
     their_messages_raw = temp
     their_messages = []
     for raw in their_messages_raw:
-        header_obj = json.loads(raw["header"])
-        check_msg_path = Path(msg_path_recv/f'{header_obj["uuid"]}.json')
+        check_msg_path = Path(msg_path_recv/f'{raw["uuid"]}.json')
         if  check_msg_path.exists():
             inner = json.loads(make_keys.decrypt_secure_storage(check_msg_path.read_bytes(), 'str'))
         else:
@@ -140,10 +139,9 @@ def grab_message_log(my_contact_id, contact_id):
     their_messages_de_duped = []
 
     for msg in their_messages:
-        header_obj = json.loads(msg["header"])
-        if header_obj['uuid'] in seen_uuids:
+        if msg['uuid'] in seen_uuids:
             continue
-        seen_uuids.append(header_obj['uuid'])
+        seen_uuids.append(msg['uuid'])
         their_messages_de_duped.append(msg)
 
 
@@ -490,8 +488,7 @@ class choose_contact_popup(BoxLayout):
         message = messages.decompress(payload_bytes, inner["compression_type"]).decode()
         recv_path = Path(storage_path/"contacts"/contact_id/"messages"/"recv")
         recv_path.mkdir(parents=True, exist_ok=True)
-        header_obj = json.loads(raw["header"])
-        Path(recv_path/f'{header_obj["uuid"]}.json').write_bytes(make_keys.encrypt_secure_storage(json.dumps(inner)))
+        Path(recv_path/f'{raw["uuid"]}.json').write_bytes(make_keys.encrypt_secure_storage(json.dumps(inner)))
         print(message)
 
         if self.form_popup:

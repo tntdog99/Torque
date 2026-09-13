@@ -143,13 +143,7 @@ def grab_message_log(my_contact_id, contact_id):
     their_messages_raw = temp
     their_messages = []
     for raw in their_messages_raw:
-        try:
-            header_obj = json.loads(raw["header"])
-        except (json.JSONDecodeError, KeyError):
-            print(raw)
-            logger.exception("Invalid message header for contact %s", contact_id)
-            continue
-        check_msg_path = Path(msg_path_recv/f'{header_obj['uuid']}.json')
+        check_msg_path = Path(msg_path_recv/f'{raw['uuid']}.json')
         if  check_msg_path.exists():
             inner = json.loads(make_keys.decrypt_secure_storage(check_msg_path.read_bytes(), 'str'))
         else:
@@ -474,7 +468,6 @@ def choose_contact():
             for message_raw in filtered_messages:
                 
                 contact_id = message_raw['sender_id']
-                header_obj = json.loads(message_raw["header"])
                 new_contact = {
                     "chat_name": message_raw['sender_id'],
                     "contact_id": message_raw['sender_id']
@@ -496,7 +489,7 @@ def choose_contact():
                 message = messages.decompress(payload_bytes, inner["compression_type"]).decode()
                 recv_path = Path(storage_path/"contacts"/contact_id/"messages"/"recv")
                 recv_path.mkdir(parents=True, exist_ok=True)
-                Path(recv_path/f'{header_obj["uuid"]}.json').write_bytes(make_keys.encrypt_secure_storage(json.dumps(inner)))
+                Path(recv_path/f'{message_raw["uuid"]}.json').write_bytes(make_keys.encrypt_secure_storage(json.dumps(inner)))
 
                 print(message)
             Path(storage_path/"contact_registry.json").write_bytes(

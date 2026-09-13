@@ -238,23 +238,26 @@ def ratchet_encrypt(
     nonce = os.urandom(12)
     msg_uuid = str(uuid.uuid4())
     timestamp = time.time()
-    header_fields = {
-    "ratchet_header": ratchet_state.export_ratchet_header(),
+    # anything that should be authed
+    aad = {
     "contact_id": contact_id,
     "sender_id": sender_id,
     "timestamp": timestamp,
     "uuid": msg_uuid,
+    "ratchet_header": ratchet_state.export_ratchet_header(),
     }
-    header = json.dumps(header_fields, separators=(',', ':'), sort_keys=True)
+    header = json.dumps(aad, separators=(',', ':'), sort_keys=True)
     encrypted_payload = aesgcm.encrypt(nonce, msg, header.encode("utf-8"))
 
     outer_message = {
         "type_of_key_or_message": "message",
+        "ratchet_header": ratchet_state.export_ratchet_header(),
+        "uuid": msg_uuid,
+        "timestamp": timestamp,
         "contact_id": contact_id,
         "sender_id": sender_id,
         "key_id": otk_id,
         "encrypted_payload": base64.urlsafe_b64encode(encrypted_payload).decode(),
-        "header": header,
         "nonce": base64.urlsafe_b64encode(nonce).decode(),
         "throw_pub":
             base64.urlsafe_b64encode(
@@ -292,8 +295,7 @@ def ratchet_decrypt(ratchet_state, outer_message):
     else:
         msg = outer_message
 
-    full_header = json.loads(msg['header'])
-    header = full_header['ratchet_header']
+    header = msg['ratchet_header']
     logger.debug("Ratchet decrypt started for incoming message number %s", header['message_number'])
     encrypted_payload = base64.urlsafe_b64decode(msg["encrypted_payload"])
     nonce = base64.urlsafe_b64decode(msg["nonce"])
@@ -304,9 +306,16 @@ def ratchet_decrypt(ratchet_state, outer_message):
         f"{incoming_ratchet_pub}:{header['message_number']}"
         )
     if skipped_key:
+        aad = {
+        "contact_id": msg["contact_id"],
+        "sender_id": msg["sender_id"],
+        "timestamp": msg["timestamp"],
+        "uuid": msg["uuid"],
+        "ratchet_header": msg['ratchet_header']
+        }
         logger.debug("Using skipped key for retained message %s", header['message_number'])
         del ratchet_state.skipped_message_keys[f"{incoming_ratchet_pub}:{header['message_number']}"]
-        header_check = json.dumps(full_header, separators=(',', ':'), sort_keys=True)
+        header_check = json.dumps(aad, separators=(',', ':'), sort_keys=True)
         return AESGCM(skipped_key).decrypt(nonce, encrypted_payload, header_check.encode("utf-8"))
 
 
@@ -377,7 +386,14 @@ def ratchet_decrypt(ratchet_state, outer_message):
         header['message_number'],
         ratchet_state.recv_msg_number
         )
-    header_check = json.dumps(full_header, separators=(',', ':'), sort_keys=True)
+    aad = {
+    "contact_id": msg["contact_id"],
+    "sender_id": msg["sender_id"],
+    "timestamp": msg["timestamp"],
+    "uuid": msg["uuid"],
+    "ratchet_header": msg['ratchet_header']
+    }
+    header_check = json.dumps(aad, separators=(',', ':'), sort_keys=True)
     return AESGCM(msg_key).decrypt(nonce, encrypted_payload,  header_check.encode("utf-8"))
 
 

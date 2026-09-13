@@ -342,12 +342,10 @@ def first_message_recv_init(contact_id, msg, my_contact_id):
         msg['lte']
         msg['key_id']
         msg['encrypted_payload']
-        msg['header']
         msg['nonce']
         msg['throw_pub']
-        full_header = json.loads(msg['header'])
-        full_header['ratchet_header']
-        full_header['ratchet_header']['ratchet_pub']
+        msg['ratchet_header']
+        msg['ratchet_header']['ratchet_pub']
         # pylint: enable=pointless-statement
     except (KeyError, json.JSONDecodeError) as e:
         logger.exception("Missing key or invalid json in message for contact %s: %s", contact_id, e)
@@ -362,9 +360,8 @@ def first_message_recv_init(contact_id, msg, my_contact_id):
 
     payload = base64.urlsafe_b64decode(msg["encrypted_payload"])
 
-    full_header = json.loads(msg['header'])
 
-    header = full_header['ratchet_header']
+    header = msg['ratchet_header']
 
     nonce = base64.urlsafe_b64decode(msg['nonce'])
 
@@ -414,14 +411,20 @@ def first_message_recv_init(contact_id, msg, my_contact_id):
 
     aesgcm = AESGCM(msg_key)
 
-
-    aad = json.dumps(
-    full_header,
+    aad = {
+    "contact_id": msg["contact_id"],
+    "sender_id": msg["sender_id"],
+    "timestamp": msg["timestamp"],
+    "uuid": msg["uuid"],
+    "ratchet_header": msg['ratchet_header']
+    }
+    full_aad = json.dumps(
+    aad,
     separators=(",", ":"),
     sort_keys=True,
     )
     try:
-        decrypted_payload = aesgcm.decrypt(nonce, payload, aad.encode("utf-8"))
+        decrypted_payload = aesgcm.decrypt(nonce, payload, full_aad.encode("utf-8"))
     except InvalidTag:
         logger.debug("Failed to decrypt message for contact %s", contact_id)
         return None, None
