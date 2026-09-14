@@ -21,14 +21,17 @@ if ((Get-Command wt.exe -ErrorAction SilentlyContinue)) {
     wt -d client1
     wt -d client2
     wt -d client3
+    exit
 }
 if ((Get-Command pwsh.exe -ErrorAction SilentlyContinue)) {
     Start-Process pwsh -WorkingDirectory $PWD/client1
     Start-Process pwsh -WorkingDirectory $PWD/client2
     Start-Process pwsh -WorkingDirectory $PWD/client3
+    exit
 }
 if ((Get-Command powershell.exe -ErrorAction SilentlyContinue)) {
     Start-Process powershell -WorkingDirectory $PWD/client1
     Start-Process powershell -WorkingDirectory $PWD/client2
     Start-Process powershell -WorkingDirectory $PWD/client3
+    exit
 }
