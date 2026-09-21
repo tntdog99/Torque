@@ -17,7 +17,11 @@ from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
 logging.basicConfig(filename='wbms_client.log', level=logging.ERROR,
                      format='%(asctime)s %(message)s')
 
-storage_path = Path(__file__).resolve().parent / ".storage"
+if getattr(sys, "frozen", False):
+    storage_root = Path(sys.executable).resolve().parent
+else:
+    storage_root = Path(__file__).resolve().parent
+storage_path = storage_root /".storage"
 def read_long_term_key_bundle():
     bundle = decrypt_secure_storage(Path(storage_path / "pub_bundle.json").read_bytes(), 'str')
     bundle = json.loads(bundle)

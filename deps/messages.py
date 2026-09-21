@@ -3,6 +3,7 @@ import gzip
 import json
 import logging
 import lzma
+import sys
 import time
 import uuid
 from pathlib import Path
@@ -57,14 +58,18 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 
 
-storage_path = Path(__file__).resolve().parent / ".storage"
+
 
 logging.basicConfig(filename='wbms_client.log', level=logging.ERROR,
                      format='%(asctime)s %(message)s')
 logger = logging.getLogger(__name__)
 
 
-
+if getattr(sys, "frozen", False):
+    storage_root = Path(sys.executable).resolve().parent
+else:
+    storage_root = Path(__file__).resolve().parent
+storage_path = storage_root /".storage"
 
 def X3DH(long_term_encrypttion_priv , prekey_pub , otk_pub , long_term_encrypttion_pub):
     """

@@ -5,15 +5,20 @@ import logging
 import random
 import socket
 import ssl
+import sys
 from pathlib import Path
 import socks
-config_path = Path(__file__).resolve().parent / ".storage" / "config.json"
+
 # handles most of the networking for talking to the servers
 logging.basicConfig(filename='wbms_client.log', level=logging.ERROR,
                      format='%(asctime)s %(message)s')
 logger = logging.getLogger(__name__)
-
-
+if getattr(sys, "frozen", False):
+    storage_root = Path(sys.executable).resolve().parent
+else:
+    storage_root = Path(__file__).resolve().parent
+storage_path = storage_root /".storage"
+config_path = storage_path / "config.json"
 def _fingerprint(der_cert_bytes):
     return hashlib.sha256(der_cert_bytes).hexdigest()
 def connect_pinned(host, port, expected_fingerprint, timeout=5):
@@ -44,7 +49,6 @@ def connect_pinned(host, port, expected_fingerprint, timeout=5):
         )
     return conn
 
-storage_path = Path(__file__).resolve().parent / ".storage"
 
 def connect_to_all_servers():
     """

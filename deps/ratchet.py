@@ -4,6 +4,7 @@ import hmac
 import json
 import logging
 import os
+import sys
 import time
 import uuid
 from pathlib import Path
@@ -22,7 +23,11 @@ logging.basicConfig(filename='wbms_client.log', level=logging.ERROR,
                      format='%(asctime)s %(message)s')
 logger = logging.getLogger(__name__)
 
-storage_path = Path(__file__).resolve().parent / ".storage"
+if getattr(sys, "frozen", False):
+    storage_root = Path(sys.executable).resolve().parent
+else:
+    storage_root = Path(__file__).resolve().parent
+storage_path = storage_root /".storage"
 
 
 def make_x25519_pub(key):
