@@ -6,8 +6,11 @@ client3/
 **.key
 **.crt
 **.log
+**.spec
 .storage/
-
+build/
+dist/
+.venv
 
 .vscode
 .pytest_cache/

@@ -15,7 +15,9 @@ Copy-Item -Path "kivy_client/*" -Destination "./client3" -Recurse -Force
 Copy-Item -Path "shared/*" -Destination "./client1" -Recurse -Force
 Copy-Item -Path "shared/*" -Destination "./client2" -Recurse -Force
 Copy-Item -Path "shared/*" -Destination "./client3" -Recurse -Force
-
+Copy-Item -Path "deps/*" -Destination "./client1" -Recurse -Force
+Copy-Item -Path "deps/*" -Destination "./client2" -Recurse -Force
+Copy-Item -Path "deps/*" -Destination "./client3" -Recurse -Force
 
 if ((Get-Command wt.exe -ErrorAction SilentlyContinue)) {
     wt -d client1

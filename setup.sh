@@ -12,5 +12,7 @@ cp -R kivy_client/. client3/
 cp -R shared/. client1/
 cp -R shared/. client2/
 cp -R shared/. client3/
-
+cp -R deps/. client1/
+cp -R deps/. client2/
+cp -R deps/. client3/
 
