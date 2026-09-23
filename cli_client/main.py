@@ -318,60 +318,63 @@ def contact_screen(contact_bundle, my_contact_id):
 
 
 def details_screen(contact_bundle, my_contact_id):
-    clear()
-    print(f"Name: {contact_bundle['chat_name']}")
-    print(f"Contact id: {contact_bundle['contact_id']}")
-    option = choice(
-        message="details",
-        options=[('chat', 'Enter'),
-        ('del', 'Delete contact'),
-        ('edit', 'Edit Chat name'),
-        ('block' , 'Block contact')]
-        )
-    if option == 'chat':
-        contact_screen(contact_bundle, my_contact_id)
-    if option == 'del':
-        contacts = grab_contacts()
-        new_contacts = []
-        for contact in contacts:
-            if contact['contact_id'] != contact_bundle['contact_id']:
-                new_contacts.append(contact)
-        Path(storage_path/"contact_registry.json").write_bytes(
-            make_keys.encrypt_secure_storage(json.dumps(new_contacts))
-        )
-    if option == 'edit':
-        contacts = grab_contacts()
-        new_contacts = []
-        for contact in contacts:
-            if contact['contact_id'] != contact_bundle['contact_id']:
-                new_contacts.append(contact)
-            else:
-                new_name = input_dialog(
-                    title="Edit contact",
-                    text="Enter the new chat name: "
-                    ).run()
-                if new_name is None or len(new_name.strip()) == 0:
-                    raise KeyboardInterrupt
-                contact_bundle['chat_name'] = new_name
-                new_contacts.append(contact_bundle)
-        Path(storage_path/"contact_registry.json").write_bytes(
-            make_keys.encrypt_secure_storage(json.dumps(new_contacts))
-        )
-    if option == 'block':
-        contacts = grab_contacts()
-        new_contacts = []
-        for contact in contacts:
-            if contact['contact_id'] != contact_bundle['contact_id']:
-                new_contacts.append(contact)
-        Path(storage_path/"contact_registry.json").write_bytes(
-            make_keys.encrypt_secure_storage(json.dumps(new_contacts))
-        )
+    try:
+        clear()
+        print(f"Name: {contact_bundle['chat_name']}")
+        print(f"Contact id: {contact_bundle['contact_id']}")
+        option = choice(
+            message="details",
+            options=[('chat', 'Enter'),
+            ('del', 'Delete contact'),
+            ('edit', 'Edit Chat name'),
+            ('block' , 'Block contact')]
+            )
+        if option == 'chat':
+            contact_screen(contact_bundle, my_contact_id)
+        if option == 'del':
+            contacts = grab_contacts()
+            new_contacts = []
+            for contact in contacts:
+                if contact['contact_id'] != contact_bundle['contact_id']:
+                    new_contacts.append(contact)
+            Path(storage_path/"contact_registry.json").write_bytes(
+                make_keys.encrypt_secure_storage(json.dumps(new_contacts))
+            )
+        if option == 'edit':
+            try:
+                contacts = grab_contacts()
+                new_contacts = []
+                for contact in contacts:
+                    if contact['contact_id'] != contact_bundle['contact_id']:
+                        new_contacts.append(contact)
+                    else:
+                        new_name = prompt(message="Enter the new chat name: ")
+                        if new_name is None or len(new_name.strip()) == 0:
+                            raise KeyboardInterrupt
+                        contact_bundle['chat_name'] = new_name
+                        new_contacts.append(contact_bundle)
+                Path(storage_path/"contact_registry.json").write_bytes(
+                    make_keys.encrypt_secure_storage(json.dumps(new_contacts))
+                )
+            except KeyboardInterrupt:
+                return
+        if option == 'block':
+            contacts = grab_contacts()
+            new_contacts = []
+            for contact in contacts:
+                if contact['contact_id'] != contact_bundle['contact_id']:
+                    new_contacts.append(contact)
+            Path(storage_path/"contact_registry.json").write_bytes(
+                make_keys.encrypt_secure_storage(json.dumps(new_contacts))
+            )
 
-        blocked_contact_ids = grab_blocked_contacts()
-        blocked_contact_ids.append(contact_bundle['contact_id'])
-        Path(storage_path/"blocked_contact_ids.json").write_bytes(
-            make_keys.encrypt_secure_storage(json.dumps(blocked_contact_ids))
-        )
+            blocked_contact_ids = grab_blocked_contacts()
+            blocked_contact_ids.append(contact_bundle['contact_id'])
+            Path(storage_path/"blocked_contact_ids.json").write_bytes(
+                make_keys.encrypt_secure_storage(json.dumps(blocked_contact_ids))
+            )
+    except KeyboardInterrupt:
+        return
 if not check_if_starting_keys_exist():
     make_keys.make_starting_keys()
 
