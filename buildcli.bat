@@ -1,4 +1,5 @@
 rmdir /s /q dist
+rmdir /s /q build
 python -m venv .venv
 call .venv\Scripts\activate.bat
 pip install -r cli_client\requirements.txt
