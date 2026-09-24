@@ -269,7 +269,6 @@ def first_message_send_init(contact_id, message, sender_id):
     except (IndexError,TypeError) as e:
         logger.error("No semi_key found for contact %s", contact_id)
         raise NoKeyFound("no otk key found on server") from e
-
     try:
         otk_json = keys.grab_type_from_server(contact_id, "otk")[0]['_source'] # type: ignore
     except (IndexError,TypeError) as e:
@@ -317,6 +316,7 @@ def first_message_send_init(contact_id, message, sender_id):
         ratchet_state,
         json.dumps(inner).encode(),
         contact_id, otk_json['key_id'],
+        prekey_bundle['key_id'],
         throw_pub, start=True,
         lte_pub=lte_pub,
         sender_id=sender_id,
@@ -334,10 +334,6 @@ def first_message_recv_init(contact_id, msg, my_contact_id):
     except ValueError:
         logger.error("Invalid contact_id format for contact %s", contact_id)
         return None, None
-    prekey_priv = make_keys.decrypt_secure_storage(Path(contact_path/"semi_priv.bin").read_bytes(), expected_output_type='bytes')
-    prekey_priv = X25519PrivateKey.from_private_bytes(prekey_priv)
-
-
 
     # make sure the format of the message is correct
     
@@ -346,6 +342,7 @@ def first_message_recv_init(contact_id, msg, my_contact_id):
         msg['lte_sig']
         msg['lte']
         msg['key_id']
+        msg['prekey_id']
         msg['encrypted_payload']
         msg['nonce']
         msg['throw_pub']
@@ -355,6 +352,20 @@ def first_message_recv_init(contact_id, msg, my_contact_id):
     except (KeyError, json.JSONDecodeError) as e:
         logger.exception("Missing key or invalid json in message for contact %s: %s", contact_id, e)
         return None, None
+    prekey_path = make_keys.sanitize_path(contact_path, msg['prekey_id'])
+    if prekey_path is None:
+        # potential path traversal, exit now and log it
+        logger.warning("potential path traversal detected")
+        return None, None
+    prekey_priv = make_keys.decrypt_secure_storage(
+        Path(prekey_path/"semi_priv.bin").read_bytes(),
+        expected_output_type='bytes'
+    )
+    prekey_priv = X25519PrivateKey.from_private_bytes(prekey_priv)
+
+
+
+
 
 
     try:
@@ -375,8 +386,7 @@ def first_message_recv_init(contact_id, msg, my_contact_id):
     lte_other_pub = make_x25519_pub(msg['lte'])
     throw_pub = make_x25519_pub(msg["throw_pub"])
 
-    prekey_path = Path(contact_path/"semi_pub.json")
-    prekey_bundle = json.loads(make_keys.decrypt_secure_storage(prekey_path.read_bytes(), 'str'))
+    prekey_bundle = json.loads(make_keys.decrypt_secure_storage(Path(prekey_path/"semi_pub.json").read_bytes(), 'str'))
 
 
     prekey_pub = make_x25519_pub(prekey_bundle["public_key"])

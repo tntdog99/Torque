@@ -7,7 +7,8 @@ import shutil
 import textwrap
 import threading
 from pathlib import Path
-import time 
+import time
+import sys
 
 import keys
 import make_keys
@@ -22,7 +23,11 @@ from rich import print as rprint
 logging.basicConfig(filename='wbms_client.log', level=logging.ERROR,
                      format='%(asctime)s %(message)s')
 logger = logging.getLogger(__name__)
-storage_path = Path(__file__).resolve().parent / ".storage"
+if getattr(sys, "frozen", False):
+    storage_root = Path(sys.executable).resolve().parent
+else:
+    storage_root = Path(__file__).resolve().parent
+storage_path = storage_root /".storage"
 
 def clear():
     """clears the screen"""

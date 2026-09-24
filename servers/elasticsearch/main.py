@@ -121,17 +121,17 @@ class worker_thread(threading.Thread):
                         connection.sendall(b"invalidated")
                         continue
                     else:
-                        
                         query = {
-                                "query": {
-                                    "bool": {
-                                        "filter": [
-                                                    { "term": { "type_of_key_or_message.keyword": database_request['type_of_key_or_message'] } },
-                                                    { "term": { "contact_id.keyword": database_request['contact_id'] } }
-                                                ]
-                                            }
-                                        }
+                            "query": {
+                                "bool": {
+                                    "filter": [
+                                        {"term": {"type_of_key_or_message.keyword": database_request['type_of_key_or_message']}},
+                                        {"term": {"contact_id.keyword": database_request['contact_id']}}
+                                    ]
                                 }
+                            },
+                            "sort": [{"timestamp": {"order": "desc"}}] if database_request.get('type_of_key_or_message') == 'semi_key' else []
+                        }
                         response = self.elastic_search_db.search(index="wbms_database", body=query)
                         database_response = response["hits"]["hits"]
                         if len(database_response) == 0:

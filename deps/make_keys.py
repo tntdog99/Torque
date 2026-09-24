@@ -46,8 +46,11 @@ def make_prekey(contact_id):
     # signs the prekey with the identify key to prove ownership of the prekey
     prekey_signature = priv_identify_key.sign(public_bytes) # type: ignore
 
+    # generates a random prekey id, this is used to identify the prekey on the server and is also used in the x3dh protocol
+    prekey_id = os.urandom(8).hex()
+    Path(contact_path/prekey_id).mkdir(parents=True, exist_ok=True)
     # saves the prekey private key to disk, this is used later when we need to do the x3dh recv
-    Path(contact_path/"semi_priv.bin").write_bytes(
+    Path(contact_path/prekey_id/"semi_priv.bin").write_bytes(
         encrypt_secure_storage(
             private_key.private_bytes(
             encoding=serialization.Encoding.Raw,
@@ -61,8 +64,7 @@ def make_prekey(contact_id):
     # time stamp of when the key was made
     timestamp = int(time.time())
 
-    # generates a random prekey id, this is used to identify the prekey on the server and is also used in the x3dh protocol
-    prekey_id = os.urandom(4).hex()
+
 
     data = {
     "key_id": prekey_id,
@@ -76,7 +78,7 @@ def make_prekey(contact_id):
     "long_term_encryption_pub_sig": read_long_term_key_bundle()["long_term_encryption_pub_sig"], # the signature of the long term encrypt key with the identify key, this is used to prove ownership of the long term encrypt key
     }
 
-    Path(contact_path/"semi_pub.json").write_bytes(encrypt_secure_storage(json.dumps(data))) # saves the prekey public key and signature to disk, this is used later when we need to do the x3dh send
+    Path(contact_path/prekey_id/"semi_pub.json").write_bytes(encrypt_secure_storage(json.dumps(data))) # saves the prekey public key and signature to disk, this is used later when we need to do the x3dh send
     return data
 
 def make_otks(contact_id):

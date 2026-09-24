@@ -94,9 +94,10 @@ def make_connection_rand():
     raise ConnectionError("Could not connect to any server from serverlist.csv")
 
 
+def sort_data(timestamp_key, data_list):
+    return sorted(data_list, key=lambda data: data["_source"][timestamp_key], reverse=True)
 
-
-def grab_type_from_server(contact_id, type):
+def grab_type_from_server(contact_id, data_type):
     """
     grabs a key or message from the server given a contact id and a type of key / message
     """
@@ -104,7 +105,7 @@ def grab_type_from_server(contact_id, type):
     # this should connect to the server and pull down the requested docs
     request_payload = {
         "request": True, # tells the server that this is a request
-        "type_of_key_or_message": type, # the type of key or message
+        "type_of_key_or_message": data_type, # the type of key or message
         "contact_id": contact_id, # the contact id / user id
     }
     try:
@@ -122,6 +123,9 @@ def grab_type_from_server(contact_id, type):
                     break
                 try:
                     database_response = json.loads(data.decode())
+                    if data_type == "semi_key":
+                        sorted_responses = sort_data("timestamp", database_response)
+                        return sorted_responses
                     return database_response
                 except json.JSONDecodeError:
                     logger.debug("not done")

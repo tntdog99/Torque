@@ -104,10 +104,16 @@ class worker_thread(threading.Thread):
                         connection.sendall(b"invalidated")
                         continue
                     else:
-                        worker_cursor.execute(
-                            "SELECT id, document FROM wbms_database WHERE contact_id=? AND type_of_key_or_message=?",
-                            (database_request['contact_id'], database_request['type_of_key_or_message']),
-                        )
+                        if database_request.get('type_of_key_or_message') == 'semi_key':
+                            worker_cursor.execute(
+                                "SELECT id, document FROM wbms_database WHERE contact_id=? AND type_of_key_or_message=? ORDER BY id DESC LIMIT 1",
+                                (database_request['contact_id'], database_request['type_of_key_or_message']),
+                            )
+                        else:
+                            worker_cursor.execute(
+                                "SELECT id, document FROM wbms_database WHERE contact_id=? AND type_of_key_or_message=?",
+                                (database_request['contact_id'], database_request['type_of_key_or_message']),
+                            )
                         rows = worker_cursor.fetchall()
                         database_response = format_hits(rows)
 

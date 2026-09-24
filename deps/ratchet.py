@@ -230,6 +230,7 @@ def ratchet_encrypt(
     msg,
     contact_id,
     otk_id,
+    prekey_id,
     throw_pub=None,
     start=False,
     lte_pub=None,
@@ -262,6 +263,7 @@ def ratchet_encrypt(
         "contact_id": contact_id,
         "sender_id": sender_id,
         "key_id": otk_id,
+        "prekey_id": prekey_id,
         "encrypted_payload": base64.urlsafe_b64encode(encrypted_payload).decode(),
         "nonce": base64.urlsafe_b64encode(nonce).decode(),
         "throw_pub":
