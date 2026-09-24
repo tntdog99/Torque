@@ -259,7 +259,7 @@ if not key_path.exists() or not cert_path.exists():
     cert = generate_cert("wbms", key_path, cert_path, 3650)
 else:
     cert = x509.load_pem_x509_certificate(cert_path.read_bytes())
-
+print("fingerprint: ", get_fingerprint(cert))
 logger.info("fingerprint: %s", get_fingerprint(cert))
 
 context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)

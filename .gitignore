@@ -7,7 +7,6 @@ client3/
 **.crt
 **.log
 **.spec
-.storage/
 build/
 dist/
 .venv

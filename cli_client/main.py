@@ -622,7 +622,10 @@ def home(default_choice=None):
         make_keys.make_otks(contact_id)
 
         for otk in otk_path.iterdir():
-            otk_data = make_keys.decrypt_secure_storage(Path(otk/"semi_pub.json").read_bytes(), 'str')
+            semi_pub_path = otk / "semi_pub.json"
+            if not semi_pub_path.is_file():
+                continue
+            otk_data = make_keys.decrypt_secure_storage(semi_pub_path.read_bytes(), 'str')
             otk_data = json.loads(otk_data)
             keys.send_to_all_servers(otk_data)
     if menu_choice == 'config':

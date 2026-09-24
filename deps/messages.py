@@ -457,6 +457,7 @@ def first_message_recv_init(contact_id, msg, my_contact_id):
     consume_otk(otk_id, contact_id)
     Path(otk_dir/"semi_pub.json").unlink()
     Path(otk_dir/"priv.bin").unlink()
+    otk_dir.rmdir()
 
     return json.loads(decrypted_payload.decode()), ratchet_state
 

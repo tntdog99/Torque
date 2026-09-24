@@ -1,0 +1,13 @@
+{
+  "storage": {
+    "\"allow insecure keyring\"": false
+  },
+  "tor": {
+    "enabled": true,
+    "proxy": "127.0.0.1:9050",
+    "only use tor for .onion": true
+  },
+  "messages": {
+    "compression": "gzip"
+  }
+}
