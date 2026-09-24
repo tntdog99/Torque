@@ -250,6 +250,8 @@ def contact_screen(contact_bundle, my_contact_id):
                 continue
             try:
                 key = readchar.readkey()
+                if key == 'm':
+                    key_pause.set()
                 key_queue.put(key)
             except KeyboardInterrupt:
                 key_queue.put(readchar.key.CTRL_C)
