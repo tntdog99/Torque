@@ -10,6 +10,7 @@ import argparse
 import threading
 from queue import Queue
 import time
+import copy
 
 import urllib3
 from cryptography import x509

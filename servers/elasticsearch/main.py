@@ -10,6 +10,7 @@ import argparse
 import threading
 from queue import Queue
 import time
+import copy
 
 import urllib3
 from cryptography import x509
@@ -159,7 +160,7 @@ def verify_posted_key(doc):
 
 
 
-
+    doc = copy.deepcopy(doc)
     type_of_key = doc.get("type_of_key_or_message")
 
 
