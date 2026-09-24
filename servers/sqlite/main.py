@@ -161,9 +161,9 @@ def verify_posted_key(doc):
 
 
 
-
+    doc = copy.deepcopy(doc)
     type_of_key = doc.get("type_of_key_or_message")
-
+    
 
     try:
         if type_of_key == "message":
