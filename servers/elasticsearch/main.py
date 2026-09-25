@@ -33,7 +33,7 @@ cli_args_parser = argparse.ArgumentParser(description="server software for Torqu
 cli_args_parser.add_argument("-i", "--interface", type=str, default="0.0.0.0", help="the interface to bind to")
 cli_args_parser.add_argument("-p", "--port", type=int, default=8080, help="the port to bind to")
 cli_args_parser.add_argument("-t", "--thread_count", type=int, default=1, help="the amount of threads to start for request handling ")
-cli_args_parser.add_argument("-c", "--handler_thread_count", type=int, default=1, help="the amount of threads to start for connection handling ")
+cli_args_parser.add_argument("-c", "--handler_thread_count", type=int, default=10, help="the amount of threads to start for connection handling ")
 cli_args_parser.add_argument("-n", "--timeout", type=int, default=3, help="the time the main thread will wait for a request to be parsed")
 
 args = cli_args_parser.parse_args()
