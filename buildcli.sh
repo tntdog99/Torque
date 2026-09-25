@@ -1,5 +1,5 @@
 #!/bin/bash
-rm -rf dist
+rm -rf dist/linux
 rm -rf build
 python -m venv .venv
 source .venv/bin/activate

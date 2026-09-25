@@ -1,4 +1,4 @@
-rmdir /s /q dist
+rmdir /s /q dist\windows
 rmdir /s /q build
 python -m venv .venv
 call .venv\Scripts\activate.bat
