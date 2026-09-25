@@ -284,7 +284,7 @@ def contact_screen(contact_bundle, my_contact_id):
                     rprint(f'[#000000 on #ffffff]{contact_id:^{columns}}')
                     for message in message_log:
                         print_text(columns, message['message_bytes'], message['side'])
-                    rprint('[dim]  m  compose    Ctrl+C  back[/dim]')
+                    rprint('[dim]  m = compose, Ctrl+C = back, Esc+Enter = send message[/dim]')
                 needs_redraw.clear()
 
             try:
