@@ -1,3 +1,5 @@
+from typing_extensions import Dict
+from cryptography.hazmat.bindings._rust.x509 import Certificate
 import base64
 import datetime
 import json
@@ -21,8 +23,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from cryptography.x509.oid import NameOID
 logging.basicConfig(filename='wbms_server.log', level=logging.ERROR,
                      format='%(asctime)s %(message)s')
-logger = logging.getLogger(__name__)
-
+logger: logging.Logger = logging.getLogger(__name__)
 urllib3.disable_warnings()
 
 
@@ -33,7 +34,6 @@ cli_args_parser.add_argument("-t", "--thread_count", type=int, default=1, help="
 cli_args_parser.add_argument("-n", "--timeout", type=int, default=3, help="the time the main thread will wait for a request to be parsed")
 
 args = cli_args_parser.parse_args()
-
 
 class worker_thread(threading.Thread):
     def __init__(self, request_queue: Queue):
@@ -47,15 +47,16 @@ class worker_thread(threading.Thread):
         while True:
             
             database_request, connection = self.request_queue.get(block=True, timeout=None)
-            worker_cursor = self.sqlite_connection.cursor()
+            worker_cursor: sqlite3.Cursor = self.sqlite_connection.cursor()
             try:
                 if database_request.get('request') is True:
                     # grabs the requested data (message or key) from the database
                     if database_request.get('type_of_key_or_message') == 'otk':
+                        # fetch otk from contact id of the publisher
                         worker_cursor.execute(
                             "SELECT id, document FROM wbms_database WHERE contact_id=? AND type_of_key_or_message=? LIMIT 1",
                             (database_request['contact_id'],
-                            database_request['type_of_key_or_message']),
+                            database_request['type_of_key_or_message']),# always otk
                         )
                         rows = worker_cursor.fetchall()
                         hits = format_hits(rows)
@@ -154,24 +155,21 @@ class worker_thread(threading.Thread):
 
 
 
-
-
-
 def verify_posted_key(doc):
 
 
 
     doc = copy.deepcopy(doc)
     type_of_key = doc.get("type_of_key_or_message")
-    
+
 
     try:
         if type_of_key == "message":
-            ident_pub = Ed25519PublicKey.from_public_bytes(
+            ident_pub: Ed25519PublicKey = Ed25519PublicKey.from_public_bytes(
                 base64.urlsafe_b64decode(doc["sender_id"])
             )
         else:
-            ident_pub = Ed25519PublicKey.from_public_bytes(
+            ident_pub: Ed25519PublicKey = Ed25519PublicKey.from_public_bytes(
                 base64.urlsafe_b64decode(doc["contact_id"])
             )
     except Exception:
@@ -205,24 +203,14 @@ def verify_posted_key(doc):
         return False
     return True
 
-
-
-
-
-
-
-
-
-
-
 def generate_cert(cn, key_path, cert_path, days=3650):
-    key = rsa.generate_private_key(public_exponent=65537, key_size=4096)
+    key: rsa.RSAPrivateKey = rsa.generate_private_key(public_exponent=65537, key_size=4096)
 
     subject = issuer = x509.Name([
         x509.NameAttribute(NameOID.COMMON_NAME, cn),
     ])
 
-    cert = (
+    cert: Certificate = (
         x509.CertificateBuilder()
         .subject_name(subject)
         .issuer_name(issuer)
@@ -235,12 +223,12 @@ def generate_cert(cn, key_path, cert_path, days=3650):
         .sign(key, hashes.SHA256())
     )
 
-    key_bytes = key.private_bytes(
+    key_bytes: bytes = key.private_bytes(
         encoding=serialization.Encoding.PEM,
         format=serialization.PrivateFormat.TraditionalOpenSSL,
         encryption_algorithm=serialization.NoEncryption(),
     )
-    cert_bytes = cert.public_bytes(serialization.Encoding.PEM)
+    cert_bytes: bytes = cert.public_bytes(serialization.Encoding.PEM)
 
     Path(key_path).write_bytes(key_bytes)
     Path(cert_path).write_bytes(cert_bytes)
@@ -259,7 +247,7 @@ if not key_path.exists() or not cert_path.exists():
     logger.warning("No cert found, generating new cert")
     cert = generate_cert("wbms", key_path, cert_path, 3650)
 else:
-    cert = x509.load_pem_x509_certificate(cert_path.read_bytes())
+    cert: Certificate = x509.load_pem_x509_certificate(cert_path.read_bytes())
 print("fingerprint: ", get_fingerprint(cert))
 logger.info("fingerprint: %s", get_fingerprint(cert))
 
@@ -270,10 +258,10 @@ context.load_cert_chain(certfile=str(cert_path), keyfile=str(key_path))
 
 
 
-setup_connection_sqlite = sqlite3.connect("wbms.db")
+setup_connection_sqlite: sqlite3.Connection = sqlite3.connect("wbms.db")
 
 setup_connection_sqlite.row_factory = sqlite3.Row
-cursor = setup_connection_sqlite.cursor()
+cursor: sqlite3.Cursor = setup_connection_sqlite.cursor()
 
 cursor.execute(
     """
@@ -295,7 +283,7 @@ PORT = args.port
 
 
 def format_hits(rows):
-    hits = []
+    hits: list[Dict] = []
     for row in rows:
         try:
             src = json.loads(row["document"])
@@ -313,7 +301,6 @@ server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server.bind((HOST, PORT))
 
 request_queue = Queue(maxsize=500)
-
 request_threads = []
 
 for _ in range(args.thread_count):
@@ -325,48 +312,48 @@ for _ in range(args.thread_count):
 logger.info('started worker threads')
 server.listen()
 
-
-
-
-
 logger.info("Server listening on %s:%s", HOST, PORT)
 while True:
     raw_conn, addr = server.accept()
     try:
-        conn = context.wrap_socket(raw_conn, server_side=True)
+        conn: ssl.SSLSocket = context.wrap_socket(raw_conn, server_side=True)
     except ssl.SSLError as e:
         logger.info("TLS handshake failed: %s", e)
         raw_conn.close()
         continue
     conn.settimeout(5)
     logger.info("Connected")
-    start_time = time.time()
+    start_time: float = time.time()
     handed_to_worker = False
     data = b""
     while True:
-        chunk = conn.recv(11534336)
-        if not chunk:
-            break
-        # add the chunk to the json packet
-        data += chunk
-        if len(data) > 2**20: # 1 MB
-            logger.info('msg too large')
-            break
         try:
-            database_request = json.loads(data.decode())
-            request_queue.put((database_request, conn), timeout=5)
-            handed_to_worker = True
-            break
-        except json.JSONDecodeError:
-            if time.time() - start_time > args.timeout:
+            json_chunk_bytes: bytes = conn.recv(11534336)
+            if not json_chunk_bytes:
                 break
-            # runs if the json packet is not fully received yet
-            logger.info("not done")
-            continue
-        except (KeyError,UnicodeDecodeError, TimeoutError):
-            if time.time() - start_time > args.timeout:
+            # add the chunk to the json packet
+            data += json_chunk_bytes
+            if len(data) > 2**20: # 1 MB
+                logger.info('msg too large')
                 break
-            logger.info('malformed input')
+            try:
+                database_request = json.loads(data.decode())
+                request_queue.put((database_request, conn), timeout=5)
+                handed_to_worker = True
+                break
+            except json.JSONDecodeError:
+                if time.time() - start_time > args.timeout:
+                    raise TimeoutError
+                # runs if the json packet is not fully received yet
+                logger.info("not done")
+                continue
+            except (KeyError,UnicodeDecodeError):
+                if time.time() - start_time > args.timeout:
+                    raise TimeoutError
+                logger.info('malformed input')
+                break
+        except (TimeoutError):
+            logger.info('timeout')
             break
     if not handed_to_worker:
         conn.close()

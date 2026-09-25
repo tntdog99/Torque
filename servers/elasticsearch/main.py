@@ -1,3 +1,4 @@
+from cryptography.hazmat.bindings._rust.x509 import Certificate
 import base64
 import datetime
 import json
@@ -24,9 +25,8 @@ from elasticsearch import Elasticsearch
 
 logging.basicConfig(filename='wbms_server.log', level=logging.ERROR,
                      format='%(asctime)s %(message)s')
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 urllib3.disable_warnings()
-
 
 
 cli_args_parser = argparse.ArgumentParser(description="server software for Torque")
@@ -166,11 +166,11 @@ def verify_posted_key(doc):
 
     try:
         if type_of_key == "message":
-            ident_pub = Ed25519PublicKey.from_public_bytes(
+            ident_pub: Ed25519PublicKey = Ed25519PublicKey.from_public_bytes(
                 base64.urlsafe_b64decode(doc["sender_id"])
             )
         else:
-            ident_pub = Ed25519PublicKey.from_public_bytes(
+            ident_pub: Ed25519PublicKey = Ed25519PublicKey.from_public_bytes(
                 base64.urlsafe_b64decode(doc["contact_id"])
             )
     except Exception:
@@ -205,13 +205,13 @@ def verify_posted_key(doc):
     return True
 
 def generate_cert(cn, key_path, cert_path, days=3650):
-    key = rsa.generate_private_key(public_exponent=65537, key_size=4096)
+    key: rsa.RSAPrivateKey = rsa.generate_private_key(public_exponent=65537, key_size=4096)
 
     subject = issuer = x509.Name([
         x509.NameAttribute(NameOID.COMMON_NAME, cn),
     ])
 
-    cert = (
+    cert: Certificate = (
         x509.CertificateBuilder()
         .subject_name(subject)
         .issuer_name(issuer)
@@ -224,12 +224,12 @@ def generate_cert(cn, key_path, cert_path, days=3650):
         .sign(key, hashes.SHA256())
     )
 
-    key_bytes = key.private_bytes(
+    key_bytes: bytes = key.private_bytes(
         encoding=serialization.Encoding.PEM,
         format=serialization.PrivateFormat.TraditionalOpenSSL,
         encryption_algorithm=serialization.NoEncryption(),
     )
-    cert_bytes = cert.public_bytes(serialization.Encoding.PEM)
+    cert_bytes: bytes = cert.public_bytes(serialization.Encoding.PEM)
 
     Path(key_path).write_bytes(key_bytes)
     Path(cert_path).write_bytes(cert_bytes)
@@ -248,7 +248,7 @@ if not key_path.exists() or not cert_path.exists():
     logger.warning("No cert found, generating new cert")
     cert = generate_cert("wbms", key_path, cert_path, 3650)
 else:
-    cert = x509.load_pem_x509_certificate(cert_path.read_bytes())
+    cert: Certificate = x509.load_pem_x509_certificate(cert_path.read_bytes())
 print("fingerprint: ", get_fingerprint(cert))
 logger.info("fingerprint: %s", get_fingerprint(cert))
 
@@ -281,10 +281,6 @@ PORT = args.port
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
 
-
-
-
-
 server.bind((HOST, PORT))
 
 request_queue = Queue(maxsize=500)
@@ -303,43 +299,44 @@ logger.info("Server listening on %s:%s", HOST, PORT)
 while True:
     raw_conn, addr = server.accept()
     try:
-        conn = context.wrap_socket(raw_conn, server_side=True)
+        conn: ssl.SSLSocket = context.wrap_socket(raw_conn, server_side=True)
     except ssl.SSLError as e:
         logger.info("TLS handshake failed: %s", e)
         raw_conn.close()
         continue
     conn.settimeout(5)
     logger.info("Connected")
-    start_time = time.time()
+    start_time: float = time.time()
     handed_to_worker = False
     data = b""
     while True:
-        
-        chunk = conn.recv(11534336)
-        if not chunk:
-            break
-        # add the chunk to the json packet
-        data += chunk
-        if len(data) > 2**20: # 1 MB
-            logger.info('msg too large')
-            break
         try:
-            database_request = json.loads(data.decode())
-            request_queue.put((database_request, conn), timeout=5)
-            handed_to_worker = True
-            break
-
-        except json.JSONDecodeError:
-            if time.time() - start_time > args.timeout:
+            json_chunk_bytes: bytes = conn.recv(11534336)
+            if not json_chunk_bytes:
                 break
-            # runs if the json packet is not fully received yet
-            logger.info("not done")
-            continue
-        except (KeyError,UnicodeDecodeError, TimeoutError):
-            if time.time() - start_time > args.timeout:
+            # add the chunk to the json packet
+            data += json_chunk_bytes
+            if len(data) > 2**20: # 1 MB
+                logger.info('msg too large')
                 break
-            logger.info('malformed input')
+            try:
+                database_request = json.loads(data.decode())
+                request_queue.put((database_request, conn), timeout=5)
+                handed_to_worker = True
+                break
+            except json.JSONDecodeError:
+                if time.time() - start_time > args.timeout:
+                    raise TimeoutError
+                # runs if the json packet is not fully received yet
+                logger.info("not done")
+                continue
+            except (KeyError,UnicodeDecodeError):
+                if time.time() - start_time > args.timeout:
+                    raise TimeoutError
+                logger.info('malformed input')
+                break
+        except (TimeoutError):
+            logger.info('timeout')
             break
-
     if not handed_to_worker:
         conn.close()
