@@ -9,6 +9,7 @@ from pathlib import Path
 import argparse
 import threading
 from queue import Queue
+from queue import Full
 import time
 import copy
 
@@ -32,6 +33,7 @@ cli_args_parser = argparse.ArgumentParser(description="server software for Torqu
 cli_args_parser.add_argument("-i", "--interface", type=str, default="0.0.0.0", help="the interface to bind to")
 cli_args_parser.add_argument("-p", "--port", type=int, default=8080, help="the port to bind to")
 cli_args_parser.add_argument("-t", "--thread_count", type=int, default=1, help="the amount of threads to start for request handling ")
+cli_args_parser.add_argument("-c", "--handler_thread_count", type=int, default=1, help="the amount of threads to start for connection handling ")
 cli_args_parser.add_argument("-n", "--timeout", type=int, default=3, help="the time the main thread will wait for a request to be parsed")
 
 args = cli_args_parser.parse_args()
@@ -295,47 +297,63 @@ logger.info('started worker threads')
 server.listen()
 
 logger.info("Server listening on %s:%s", HOST, PORT)
-while True:
-    raw_conn, addr = server.accept()
-    try:
-        conn: ssl.SSLSocket = context.wrap_socket(raw_conn, server_side=True)
-    except ssl.SSLError as e:
-        logger.info("TLS handshake failed: %s", e)
-        raw_conn.close()
-        continue
-    conn.settimeout(5)
-    logger.info("Connected")
-    start_time: float = time.time()
-    handed_to_worker = False
-    data = b""
+connection_queue = Queue(maxsize=200)
+
+def connection_handler(connection_queue, request_queue):
     while True:
+        non_tls_connection = connection_queue.get()
+        non_tls_connection.settimeout(args.timeout)
+
         try:
-            json_chunk_bytes: bytes = conn.recv(11534336)
-            if not json_chunk_bytes:
-                break
-            # add the chunk to the json packet
-            data += json_chunk_bytes
-            if len(data) > 2**20: # 1 MB
-                logger.info('msg too large')
-                break
+            connection: ssl.SSLSocket = context.wrap_socket(non_tls_connection, server_side=True)
+        except ssl.SSLError as e:
+            logger.info("TLS handshake failed: %s", e)
+            non_tls_connection.close()
+            continue
+        connection.settimeout(args.timeout)
+        logger.info("Connected")
+        start_time: float = time.time()
+        handed_to_worker = False
+        data = b""
+        while True:
             try:
-                database_request = json.loads(data.decode())
-                request_queue.put((database_request, conn), timeout=5)
-                handed_to_worker = True
+                json_chunk_bytes: bytes = connection.recv(11534336)
+                if not json_chunk_bytes:
+                    break
+                # add the chunk to the json packet
+                data += json_chunk_bytes
+                if len(data) > 2**20: # 1 MB
+                    logger.info('msg too large')
+                    break
+                try:
+                    database_request = json.loads(data.decode())
+                    request_queue.put((database_request, connection), timeout=5)
+                    handed_to_worker = True
+                    break
+                except json.JSONDecodeError:
+                    if time.time() - start_time > args.timeout:
+                        raise TimeoutError
+                    # runs if the json packet is not fully received yet
+                    logger.info("not done")
+                    continue
+                except (KeyError,UnicodeDecodeError):
+                    if time.time() - start_time > args.timeout:
+                        raise TimeoutError
+                    logger.info('malformed input')
+                    break
+            except (TimeoutError):
+                logger.info('timeout')
                 break
-            except json.JSONDecodeError:
-                if time.time() - start_time > args.timeout:
-                    raise TimeoutError
-                # runs if the json packet is not fully received yet
-                logger.info("not done")
-                continue
-            except (KeyError,UnicodeDecodeError):
-                if time.time() - start_time > args.timeout:
-                    raise TimeoutError
-                logger.info('malformed input')
-                break
-        except (TimeoutError):
-            logger.info('timeout')
-            break
-    if not handed_to_worker:
-        conn.close()
+        if not handed_to_worker:
+            connection.close()
+
+for _ in range(args.handler_thread_count):
+    threading.Thread(target=connection_handler, args=(connection_queue, request_queue), daemon=True).start()
+
+
+while True:
+    raw_connection, addr = server.accept()
+    try:
+        connection_queue.put_nowait(raw_connection)
+    except Full:
+        raw_connection.close()
