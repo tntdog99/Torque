@@ -1,5 +1,4 @@
 from typing_extensions import Dict
-from cryptography.hazmat.bindings._rust.x509 import Certificate
 import base64
 import datetime
 import json
@@ -34,6 +33,7 @@ cli_args_parser.add_argument("-t", "--thread_count", type=int, default=1, help="
 cli_args_parser.add_argument("-n", "--timeout", type=int, default=3, help="the time the main thread will wait for a request to be parsed")
 
 args = cli_args_parser.parse_args()
+
 
 class worker_thread(threading.Thread):
     def __init__(self, request_queue: Queue):
@@ -210,7 +210,7 @@ def generate_cert(cn, key_path, cert_path, days=3650):
         x509.NameAttribute(NameOID.COMMON_NAME, cn),
     ])
 
-    cert: Certificate = (
+    cert = (
         x509.CertificateBuilder()
         .subject_name(subject)
         .issuer_name(issuer)
@@ -247,7 +247,7 @@ if not key_path.exists() or not cert_path.exists():
     logger.warning("No cert found, generating new cert")
     cert = generate_cert("wbms", key_path, cert_path, 3650)
 else:
-    cert: Certificate = x509.load_pem_x509_certificate(cert_path.read_bytes())
+    cert = x509.load_pem_x509_certificate(cert_path.read_bytes())
 print("fingerprint: ", get_fingerprint(cert))
 logger.info("fingerprint: %s", get_fingerprint(cert))
 
