@@ -83,6 +83,8 @@ def format_choice_contacts(contacts):
 
 def print_text(columns, message, side):
     """prints the text message"""
+    message = rich.markup.escape(message)
+
     text = textwrap.wrap(message, int(columns*0.8))
     if not text:
         text = [' ']
