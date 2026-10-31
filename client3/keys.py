@@ -1,0 +1,186 @@
+import csv
+import hashlib
+import json
+import logging
+import random
+import socket
+import ssl
+import sys
+from pathlib import Path
+import socks
+
+# handles most of the networking for talking to the servers
+logging.basicConfig(filename='wbms_client.log', level=logging.ERROR,
+                     format='%(asctime)s %(message)s')
+logger = logging.getLogger(__name__)
+if getattr(sys, "frozen", False):
+    storage_root = Path(sys.executable).resolve().parent
+else:
+    storage_root = Path(__file__).resolve().parent
+storage_path = storage_root /".storage"
+config_path = storage_path / "config.json"
+def _fingerprint(der_cert_bytes):
+    return hashlib.sha256(der_cert_bytes).hexdigest()
+def connect_pinned(host, port, expected_fingerprint, timeout=5):
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+    config = json.loads(config_path.read_text())
+    tor_enabled = config.get('tor').get('enabled', False)
+    if tor_enabled:
+        if config.get('tor').get("only use tor for .onion", True) is False or host.endswith(".onion"):
+            proxy = config.get('tor').get("proxy", "127.0.0.1:9050").split(":")
+            raw_sock = socks.socksocket()
+            raw_sock.set_proxy(socks.SOCKS5, proxy[0], int(proxy[1]))
+        else:
+            raw_sock = socket.socket()
+    else:
+        raw_sock = socket.socket()
+    raw_sock.settimeout(timeout)
+    raw_sock.connect((host, port))
+    conn = context.wrap_socket(raw_sock, server_hostname=host)
+
+    actual = _fingerprint(conn.getpeercert(binary_form=True))
+    expected = expected_fingerprint.replace(":", "").lower()
+    if actual != expected:
+        conn.close()
+        raise ssl.SSLCertVerificationError(
+            f"Fingerprint mismatch for {host}:{port} — expected {expected}, got {actual}"
+        )
+    return conn
+
+
+def connect_to_all_servers():
+    """
+    connects to all servers in the server list and returns a list of connections
+    """
+    with open('serverlist.csv', mode='r', newline='', encoding='utf-8') as file:
+        reader = csv.reader(file)
+        for server in reader:
+            host, port, fp = server
+            try:
+                conn = connect_pinned(host, int(port), fp)
+                yield conn
+            except Exception:
+                logger.exception("Could not connect to server %s:%s",host,port)
+
+
+def make_connection_rand():
+    """
+    reads a random server from the list and tries to connect to it
+    """
+
+
+    servers = []
+    # opens the server list and makes it a list of servers, ports
+    with open('serverlist.csv', mode='r', newline='', encoding='utf-8') as file:
+        reader = csv.reader(file)
+        for server in reader:
+            servers.append(server)
+
+
+    max_retrys = len(servers)//2 + 1
+    retrys = 0
+    while retrys <= max_retrys:
+        server = random.choice(servers)
+        host, port, fp = server[0], int(server[1]), server[2]
+        try:
+            return connect_pinned(host, port, fp)
+        except (OSError, ssl.SSLError, ssl.SSLCertVerificationError):
+                logger.exception("Could not connect to server %s:%s",host,port)
+
+        retrys += 1
+
+    raise ConnectionError("Could not connect to any server from serverlist.csv")
+
+
+def sort_data(timestamp_key, data_list):
+    return sorted(data_list, key=lambda data: data["_source"][timestamp_key], reverse=True)
+
+def grab_type_from_server(contact_id, data_type):
+    """
+    grabs a key or message from the server given a contact id and a type of key / message
+    """
+
+    # this should connect to the server and pull down the requested docs
+    request_payload = {
+        "request": True, # tells the server that this is a request
+        "type_of_key_or_message": data_type, # the type of key or message
+        "contact_id": contact_id, # the contact id / user id
+    }
+    try:
+        connection = make_connection_rand() # grabs a random connection from the list
+        with connection:
+            connection.sendall(json.dumps(request_payload).encode('utf-8'))
+            data = b""
+            while True:
+                chunk = connection.recv(11534336)
+                if not chunk:
+                    break
+                data += chunk
+                if len(data) > 2**20: # 1 MB
+                    print('msg too large')
+                    break
+                try:
+                    database_response = json.loads(data.decode())
+                    if data_type == "semi_key":
+                        sorted_responses = sort_data("timestamp", database_response)
+                        return sorted_responses
+                    return database_response
+                except json.JSONDecodeError:
+                    logger.debug("not done")
+                    continue
+    except (ConnectionError, ssl.SSLError, OSError):
+        print('could not connect to server')
+
+def send_to_all_servers(data):
+    """
+    sends a key or message to the server given a data dict
+    """
+    for connection in connect_to_all_servers():
+        try:
+            with connection:
+                connection.sendall(json.dumps(data).encode('utf-8'))
+                response = connection.recv(1024)
+                logger.debug(response.decode())
+        except (ConnectionError, ssl.SSLError, OSError):
+            print("could not connect to server")
+
+def get_from_all_servers(contact_id, type):
+    """
+    grabs data from all the servers
+    """
+
+    # this should connect to the server and pull down the requested docs
+    request_payload = {
+        "request": True, # tells the server that this is a request
+        "type_of_key_or_message": type, # the type of key or message
+        "contact_id": contact_id, # the contact id / user id
+    }
+    messages = []
+    for connection in connect_to_all_servers():
+        try:
+            with connection:
+                connection.sendall(json.dumps(request_payload).encode('utf-8'))
+                data = b""
+                while True:
+                    chunk = connection.recv(11534336)
+                    if not chunk:
+                        break
+                    data += chunk
+                    if len(data) > 2**20: # 1 MB
+                        print('msg too large')
+                        break
+                    try:
+                        database_response = json.loads(data.decode())
+                        for thing in database_response:
+                            messages.append(thing)
+                    except json.JSONDecodeError:
+                        logger.debug("not done")
+                        continue
+
+        except (ConnectionError, ssl.SSLError, OSError):
+            print("could not connect to server")
+            continue
+
+    return messages

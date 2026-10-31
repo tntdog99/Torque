@@ -21,7 +21,6 @@ run setup.ps1 or setup.sh
 
 to create 3 clients
 first 2 are tui clients
-the last one is the kivy client
 simply navigate into the directory and run main.py to start the client
 
 

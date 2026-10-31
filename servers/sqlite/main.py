@@ -151,6 +151,7 @@ class worker_thread(threading.Thread):
                     continue
             except (OSError, ssl.SSLError) as e:
                 logger.info("client disconnected before response: %s", e)
+            
             finally:
                 worker_cursor.close()
                 connection.close()
