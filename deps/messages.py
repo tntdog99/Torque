@@ -364,6 +364,7 @@ def first_message_recv_init(contact_id, msg, my_contact_id):
         )
     except FileNotFoundError:
         logger.warning("File not found eror when grabbing prekey")
+        return None, None
     prekey_priv = X25519PrivateKey.from_private_bytes(prekey_priv)
 
 

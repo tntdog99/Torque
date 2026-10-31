@@ -485,7 +485,6 @@ def choose_contact():
                     "chat_name": message_raw['sender_id'],
                     "contact_id": message_raw['sender_id']
                     }
-                contacts.append(new_contact)
 
 
                 try:
@@ -495,14 +494,15 @@ def choose_contact():
                         base64.urlsafe_b64encode(pubkey_bytes).decode()
                         )
                     if inner is None:
-                        return None
+                        continue
                 except ConnectionError:
-                    return None
+                    continue
                 payload_bytes = base64.urlsafe_b64decode(inner["message_bytes"])
                 message = messages.decompress(payload_bytes, inner["compression_type"]).decode()
                 recv_path = Path(storage_path/"contacts"/contact_id/"messages"/"recv")
                 recv_path.mkdir(parents=True, exist_ok=True)
                 Path(recv_path/f'{message_raw["uuid"]}.json').write_bytes(make_keys.encrypt_secure_storage(json.dumps(inner)))
+                contacts.append(new_contact)
 
                 print(message)
             Path(storage_path/"contact_registry.json").write_bytes(
