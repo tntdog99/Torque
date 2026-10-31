@@ -19,6 +19,7 @@ from prompt_toolkit import prompt
 from prompt_toolkit.application import get_app
 from prompt_toolkit.shortcuts import choice, input_dialog
 from rich import print as rprint
+import rich
 
 logging.basicConfig(filename='wbms_client.log', level=logging.ERROR,
                      format='%(asctime)s %(message)s')
@@ -280,11 +281,14 @@ def contact_screen(contact_bundle, my_contact_id):
                 with msg_lock:
                     clear()
                     columns, _ = shutil.get_terminal_size()
-                    rprint(f'[#000000 on #ffffff]{chat_id:^{columns}}')
-                    rprint(f'[#000000 on #ffffff]{contact_id:^{columns}}')
-                    for message in message_log:
-                        print_text(columns, message['message_bytes'], message['side'])
-                    rprint('[dim]  m = compose, Ctrl+C = back, Esc+Enter = send message[/dim]')
+                    try:
+                        rprint(f'[#000000 on #ffffff]{chat_id:^{columns}}')
+                        rprint(f'[#000000 on #ffffff]{contact_id:^{columns}}')
+                        for message in message_log:
+                            print_text(columns, message['message_bytes'], message['side'])
+                        rprint('[dim]  m = compose, Ctrl+C = back, Esc+Enter = send message[/dim]')
+                    except rich.errors.MarkupError:
+                        logger.error("got invalid Markup")
                 needs_redraw.clear()
 
             try:

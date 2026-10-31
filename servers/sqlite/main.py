@@ -151,7 +151,8 @@ class worker_thread(threading.Thread):
                     continue
             except (OSError, ssl.SSLError) as e:
                 logger.info("client disconnected before response: %s", e)
-            
+            except (KeyError, AttributeError, IndexError):
+                logger.warning('malformed request')
             finally:
                 worker_cursor.close()
                 connection.close()
