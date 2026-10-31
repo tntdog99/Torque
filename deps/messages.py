@@ -357,10 +357,13 @@ def first_message_recv_init(contact_id, msg, my_contact_id):
         # potential path traversal, exit now and log it
         logger.warning("potential path traversal detected")
         return None, None
-    prekey_priv = make_keys.decrypt_secure_storage(
-        Path(prekey_path/"semi_priv.bin").read_bytes(),
-        expected_output_type='bytes'
-    )
+    try:
+        prekey_priv = make_keys.decrypt_secure_storage(
+            Path(prekey_path/"semi_priv.bin").read_bytes(),
+            expected_output_type='bytes'
+        )
+    except FileNotFoundError:
+        logger.warning("File not found eror when grabbing prekey")
     prekey_priv = X25519PrivateKey.from_private_bytes(prekey_priv)
 
 
